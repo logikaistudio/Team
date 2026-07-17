@@ -1,8 +1,13 @@
-import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import React, { useEffect, useState } from 'react';
+import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { useStore } from '../store/useStore';
 import { request } from '../services/api';
 import { KeyRound, Mail, User, Building, Globe, ShieldAlert } from 'lucide-react';
+
+type LoginLocationState = {
+  prefillTenantId?: string;
+  prefillEmail?: string;
+};
 
 export const LoginPage: React.FC = () => {
   const [email, setEmail] = useState('');
@@ -12,8 +17,26 @@ export const LoginPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const setAuth = useStore((state) => state.setAuth);
   const navigate = useNavigate();
+  const location = useLocation();
+  const locationState = (location.state || {}) as LoginLocationState;
   const isUuid = (value: string): boolean =>
     /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+
+  useEffect(() => {
+    if (locationState.prefillTenantId) {
+      setTenantId(locationState.prefillTenantId);
+      localStorage.setItem('epcs_last_tenant_id', locationState.prefillTenantId);
+    } else {
+      const cachedTenantId = localStorage.getItem('epcs_last_tenant_id');
+      if (cachedTenantId) {
+        setTenantId(cachedTenantId);
+      }
+    }
+
+    if (locationState.prefillEmail) {
+      setEmail(locationState.prefillEmail);
+    }
+  }, [locationState.prefillTenantId, locationState.prefillEmail]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -30,10 +53,11 @@ export const LoginPage: React.FC = () => {
         method: 'POST',
         body: JSON.stringify({ tenantId, email, password }),
       });
+      localStorage.setItem('epcs_last_tenant_id', tenantId.trim());
       setAuth(res.user, res.accessToken);
       navigate('/');
     } catch (err: any) {
-      setError(err.message || 'Login failed. Use admin@epcs.com to bypass.');
+      setError(err.message || 'Login failed.');
     } finally {
       setLoading(false);
     }
@@ -135,12 +159,19 @@ export const RegisterPage: React.FC = () => {
   const [error, setError] = useState('');
   const navigate = useNavigate();
 
+  type RegisterResponse = {
+    user: {
+      tenantId: string;
+      email: string;
+    };
+  };
+
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setLoading(true);
     try {
-      await request('/auth/register', {
+      const res = await request<RegisterResponse>('/auth/register', {
         method: 'POST',
         body: JSON.stringify({
           tenantName,
@@ -151,7 +182,17 @@ export const RegisterPage: React.FC = () => {
           adminPassword,
         }),
       });
-      navigate('/login');
+      const createdTenantId = res.user?.tenantId;
+      if (createdTenantId) {
+        localStorage.setItem('epcs_last_tenant_id', createdTenantId);
+      }
+
+      navigate('/login', {
+        state: {
+          prefillTenantId: createdTenantId,
+          prefillEmail: adminEmail,
+        } as LoginLocationState,
+      });
     } catch (err: any) {
       setError(err.message || 'Tenant registration failed.');
     } finally {
