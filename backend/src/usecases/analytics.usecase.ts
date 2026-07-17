@@ -282,7 +282,7 @@ Based on Project Health of ${health.score}/100, the project is trending ${health
             contents: [{ parts: [{ text: promptText }] }]
           })
         });
-        const data = await response.json();
+        const data = await response.json() as any;
         return data.candidates[0].content.parts[0].text;
       } else {
         const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -296,7 +296,7 @@ Based on Project Health of ${health.score}/100, the project is trending ${health
             messages: [{ role: 'user', content: promptText }]
           })
         });
-        const data = await response.json();
+        const data = await response.json() as any;
         return data.choices[0].message.content;
       }
     } catch (err: any) {

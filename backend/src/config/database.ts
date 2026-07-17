@@ -3,104 +3,88 @@ import { config } from './index';
 import { logger } from '../utils/logger';
 
 const isProduction = process.env.NODE_ENV === 'production';
-const supabaseBaseUrl =
-  process.env.SUPABASE_URL ||
-  process.env.NEXT_PUBLIC_SUPABASE_URL ||
-  process.env.VITE_SUPABASE_URL ||
-  '';
-const supabaseRefMatch = supabaseBaseUrl.match(/^https?:\/\/([a-z0-9-]+)\.supabase\.co/i);
-const derivedSupabaseHost = supabaseRefMatch ? `db.${supabaseRefMatch[1]}.supabase.co` : '';
-const rawDbHost = (process.env.DB_HOST || '').trim();
-const normalizedDbHost = rawDbHost
-  .replace(/^https?:\/\//i, '')
-  .replace(/\/.*$/, '')
-  .replace(/:\d+$/, '');
-const shouldPreferDerivedHost = Boolean(
-  isProduction &&
-  derivedSupabaseHost &&
-  normalizedDbHost &&
-  normalizedDbHost.toLowerCase() !== derivedSupabaseHost.toLowerCase()
-);
-const effectiveDbHost = shouldPreferDerivedHost
-  ? derivedSupabaseHost
-  : (normalizedDbHost || derivedSupabaseHost || config.db.host);
 
-const rawDatabaseUrl =
-  process.env.DATABASE_URL ||
-  process.env.POSTGRES_URL_NON_POOLING ||
-  process.env.POSTGRES_URL ||
-  process.env.SUPABASE_DB_URL ||
-  '';
-const databaseUrl = rawDatabaseUrl.trim();
+// ─── Resolve the connection string ───────────────────────────────────────────
+//
+// Priority (highest → lowest):
+//   1. SUPABASE_DB_URL         – pooler URL you paste from Supabase Dashboard
+//   2. DATABASE_URL            – generic Postgres URL (Vercel / Railway / etc.)
+//   3. POSTGRES_URL_NON_POOLING– Vercel Postgres (direct)
+//   4. POSTGRES_URL            – Vercel Postgres (pooler)
+//
+// Supabase direct-DB host (db.<ref>.supabase.co : 5432) is blocked from
+// Vercel serverless functions.  Always use the Transaction Pooler URL:
+//   postgresql://postgres.<ref>:<password>@aws-0-<region>.pooler.supabase.com:6543/postgres
+//
+// Set SUPABASE_DB_URL (or DATABASE_URL) to that pooler URL in Vercel →
+// Project Settings → Environment Variables.
+//
+const connectionString: string =
+  (process.env.SUPABASE_DB_URL || '').trim() ||
+  (process.env.DATABASE_URL || '').trim() ||
+  (process.env.POSTGRES_URL_NON_POOLING || '').trim() ||
+  (process.env.POSTGRES_URL || '').trim();
 
-function resolveEffectiveDatabaseUrl(input: string, expectedHost: string): string {
-  if (!input || !expectedHost) return input;
+const hasDatabaseUrl = Boolean(connectionString);
 
+// Detect if the URL still points to the direct DB host (db.*.supabase.co).
+// Vercel cannot reach that host — warn loudly so it shows up in function logs.
+if (isProduction && hasDatabaseUrl) {
   try {
-    const parsed = new URL(input);
-    const currentHost = parsed.hostname.toLowerCase();
-    const targetHost = expectedHost.toLowerCase();
-
-    if (currentHost !== targetHost) {
-      parsed.hostname = expectedHost;
-      logger.warn(`DATABASE_URL host (${currentHost}) mismatches SUPABASE_URL. Using host ${expectedHost}.`);
-      return parsed.toString();
+    const parsed = new URL(connectionString);
+    if (/^db\.[a-z0-9-]+\.supabase\.co$/i.test(parsed.hostname)) {
+      logger.error(
+        '[DB] DATABASE_URL points to the Supabase DIRECT host ' +
+        `(${parsed.hostname}).  Vercel cannot reach this host. ` +
+        'Replace it with the Transaction Pooler URL from Supabase → ' +
+        'Project Settings → Database → Connection string → Transaction mode ' +
+        '(port 6543).  Format: ' +
+        'postgresql://postgres.<ref>:<password>@aws-0-<region>.pooler.supabase.com:6543/postgres'
+      );
     }
   } catch {
-    // Keep original string when URL parser cannot handle custom DSN format.
+    // Non-URL format – ignore
   }
-
-  return input;
 }
 
-const effectiveDatabaseUrl = resolveEffectiveDatabaseUrl(databaseUrl, derivedSupabaseHost);
-const hasDatabaseUrl = Boolean(effectiveDatabaseUrl);
-const hasDbParts = Boolean(effectiveDbHost && process.env.DB_USER && process.env.DB_NAME);
-const isLocalHost = /^(localhost|127\.0\.0\.1)$/i.test(effectiveDbHost || '');
-
-if (isProduction && !rawDbHost && derivedSupabaseHost) {
-  logger.warn(`DB_HOST is not set. Using derived Supabase DB host: ${derivedSupabaseHost}`);
-}
-
-if (shouldPreferDerivedHost) {
-  logger.warn(`DB_HOST (${normalizedDbHost}) mismatches SUPABASE_URL. Using derived host ${derivedSupabaseHost}.`);
-}
+// ─── Individual DB_* parts (development / Docker fallback) ───────────────────
+const hasDbParts = Boolean(
+  process.env.DB_HOST && process.env.DB_USER && process.env.DB_NAME
+);
 
 if (isProduction && !hasDatabaseUrl && !hasDbParts) {
-  logger.error('Database configuration is missing in production. Set DATABASE_URL or DB_HOST/DB_USER/DB_NAME in Vercel.');
+  logger.error(
+    '[DB] No database connection configured for production. ' +
+    'Set SUPABASE_DB_URL (or DATABASE_URL) in Vercel → Environment Variables.'
+  );
 }
 
-if (isProduction && !hasDatabaseUrl && isLocalHost) {
-  logger.error('Production DB_HOST points to localhost/127.0.0.1. Update it to your Supabase host.');
-}
-
-// Support both DATABASE_URL (Supabase direct) and individual DB_* variables in development
+// ─── Build pool config ────────────────────────────────────────────────────────
 const poolConfig = hasDatabaseUrl
   ? {
-  connectionString: effectiveDatabaseUrl,
+      connectionString,
       ssl: { rejectUnauthorized: false },
-      max: 20,
-      idleTimeoutMillis: 30000,
-      connectionTimeoutMillis: 10000,
+      max: 5,                       // keep low for serverless (connection limit)
+      idleTimeoutMillis: 30_000,
+      connectionTimeoutMillis: 10_000,
     }
   : {
-      host: effectiveDbHost,
-      port: config.db.port,
-      user: config.db.user,
-      password: config.db.password,
-      database: config.db.database,
+      host: process.env.DB_HOST || config.db.host,
+      port: parseInt(process.env.DB_PORT || '5432', 10),
+      user: process.env.DB_USER || config.db.user,
+      password: process.env.DB_PASSWORD || config.db.password,
+      database: process.env.DB_NAME || config.db.database,
       ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false,
-      max: 20,
-      idleTimeoutMillis: 30000,
-      connectionTimeoutMillis: 10000,
+      max: 5,
+      idleTimeoutMillis: 30_000,
+      connectionTimeoutMillis: 10_000,
     };
 
 export const pool = new Pool(poolConfig as any);
 
 pool.on('error', (err) => {
-  logger.error('Unexpected error on idle database client', { error: err.message });
+  logger.error('[DB] Unexpected error on idle database client', { error: err.message });
 });
-
 
 /**
  * Execute a set of database queries bound to a specific tenant's context.
@@ -113,7 +97,7 @@ export async function executeInTenantSession<T>(
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    
+
     // Set tenant context for PostgreSQL Row-Level Security (RLS)
     await client.query({
       text: 'SELECT set_config($1, $2, true)',
@@ -121,7 +105,7 @@ export async function executeInTenantSession<T>(
     });
 
     const result = await callback(client);
-    
+
     await client.query('COMMIT');
     return result;
   } catch (error) {

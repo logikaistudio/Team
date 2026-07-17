@@ -14,19 +14,20 @@ export async function comparePassword(password: string, hash: string): Promise<b
 }
 
 export function generateAccessToken(payload: UserPayload): string {
-  return jwt.sign(payload, config.jwt.secret, {
-    expiresIn: config.jwt.accessExpiry,
+  return jwt.sign(payload as object, config.jwt.secret as string, {
+    expiresIn: config.jwt.accessExpiry as any,
   });
 }
 
 export function generateRefreshToken(payload: UserPayload): string {
   return jwt.sign(
-    { id: payload.id, tenantId: payload.tenantId },
-    config.jwt.refreshSecret,
-    { expiresIn: config.jwt.refreshExpiry }
+    { id: payload.id, tenantId: payload.tenantId } as object,
+    config.jwt.refreshSecret as string,
+    { expiresIn: config.jwt.refreshExpiry as any }
   );
 }
 
 export function verifyRefreshToken(token: string): { id: string; tenantId: string } {
-  return jwt.verify(token, config.jwt.refreshSecret) as { id: string; tenantId: string };
+  return jwt.verify(token, config.jwt.refreshSecret as string) as { id: string; tenantId: string };
 }
+
