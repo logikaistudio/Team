@@ -3,6 +3,20 @@ import { config } from './index';
 import { logger } from '../utils/logger';
 
 const isProduction = process.env.NODE_ENV === 'production';
+const supabaseBaseUrl =
+  process.env.SUPABASE_URL ||
+  process.env.NEXT_PUBLIC_SUPABASE_URL ||
+  process.env.VITE_SUPABASE_URL ||
+  '';
+const supabaseRefMatch = supabaseBaseUrl.match(/^https?:\/\/([a-z0-9-]+)\.supabase\.co/i);
+const derivedSupabaseHost = supabaseRefMatch ? `db.${supabaseRefMatch[1]}.supabase.co` : '';
+const rawDbHost = (process.env.DB_HOST || '').trim();
+const normalizedDbHost = rawDbHost
+  .replace(/^https?:\/\//i, '')
+  .replace(/\/.*$/, '')
+  .replace(/:\d+$/, '');
+const effectiveDbHost = normalizedDbHost || derivedSupabaseHost || config.db.host;
+
 const rawDatabaseUrl =
   process.env.DATABASE_URL ||
   process.env.POSTGRES_URL_NON_POOLING ||
@@ -11,8 +25,12 @@ const rawDatabaseUrl =
   '';
 const databaseUrl = rawDatabaseUrl.trim();
 const hasDatabaseUrl = Boolean(databaseUrl);
-const hasDbParts = Boolean(process.env.DB_HOST && process.env.DB_USER && process.env.DB_NAME);
-const isLocalHost = /^(localhost|127\.0\.0\.1)$/i.test(process.env.DB_HOST || '');
+const hasDbParts = Boolean(effectiveDbHost && process.env.DB_USER && process.env.DB_NAME);
+const isLocalHost = /^(localhost|127\.0\.0\.1)$/i.test(effectiveDbHost || '');
+
+if (isProduction && !rawDbHost && derivedSupabaseHost) {
+  logger.warn(`DB_HOST is not set. Using derived Supabase DB host: ${derivedSupabaseHost}`);
+}
 
 if (isProduction && !hasDatabaseUrl && !hasDbParts) {
   logger.error('Database configuration is missing in production. Set DATABASE_URL or DB_HOST/DB_USER/DB_NAME in Vercel.');
@@ -32,7 +50,7 @@ const poolConfig = hasDatabaseUrl
       connectionTimeoutMillis: 10000,
     }
   : {
-      host: config.db.host,
+      host: effectiveDbHost,
       port: config.db.port,
       user: config.db.user,
       password: config.db.password,
