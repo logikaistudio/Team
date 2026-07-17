@@ -3,7 +3,14 @@ import { config } from './index';
 import { logger } from '../utils/logger';
 
 const isProduction = process.env.NODE_ENV === 'production';
-const hasDatabaseUrl = Boolean(process.env.DATABASE_URL);
+const rawDatabaseUrl =
+  process.env.DATABASE_URL ||
+  process.env.POSTGRES_URL_NON_POOLING ||
+  process.env.POSTGRES_URL ||
+  process.env.SUPABASE_DB_URL ||
+  '';
+const databaseUrl = rawDatabaseUrl.trim();
+const hasDatabaseUrl = Boolean(databaseUrl);
 const hasDbParts = Boolean(process.env.DB_HOST && process.env.DB_USER && process.env.DB_NAME);
 const isLocalHost = /^(localhost|127\.0\.0\.1)$/i.test(process.env.DB_HOST || '');
 
@@ -18,7 +25,7 @@ if (isProduction && !hasDatabaseUrl && isLocalHost) {
 // Support both DATABASE_URL (Supabase direct) and individual DB_* variables in development
 const poolConfig = hasDatabaseUrl
   ? {
-      connectionString: process.env.DATABASE_URL,
+  connectionString: databaseUrl,
       ssl: { rejectUnauthorized: false },
       max: 20,
       idleTimeoutMillis: 30000,
