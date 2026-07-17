@@ -1,7 +1,10 @@
 import { useStore } from '../store/useStore';
 
 const env = (import.meta as any).env || {};
-const BASE_URL = env.VITE_API_BASE_URL || '/api';
+const rawBaseUrl = env.VITE_API_BASE_URL as string | undefined;
+const BASE_URL = !rawBaseUrl || rawBaseUrl.includes('your-backend-url')
+  ? '/api'
+  : rawBaseUrl.replace(/\/+$/, '');
 
 export async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = useStore.getState().accessToken;
