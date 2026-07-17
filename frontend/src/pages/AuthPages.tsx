@@ -103,7 +103,7 @@ export const LoginPage: React.FC = () => {
           </div>
 
           <div>
-            <label className="text-xs font-semibold text-zinc-400 block mb-1">Email Address</label>
+            <label className="text-xs font-semibold text-zinc-400 block mb-1">Username or Email</label>
             <div className="relative">
               <Mail size={14} className="absolute left-3 top-3.5 text-zinc-500" />
               <input
@@ -112,7 +112,7 @@ export const LoginPage: React.FC = () => {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="w-full pl-9 pr-4 py-2.5 bg-zinc-900 border border-zinc-800 rounded-lg text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-brand-500"
-                placeholder="name@company.com"
+                placeholder="superadmin atau name@company.com"
               />
             </div>
           </div>

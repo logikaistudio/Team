@@ -17,7 +17,10 @@ export const loginSchema = z.object({
     .optional()
     .transform((v) => v?.trim())
     .refine((v) => !v || uuidRegex.test(v), 'Invalid Tenant ID format'),
-  email: z.string().email('Invalid email address'),
+  email: z
+    .string()
+    .transform((v) => v.trim())
+    .refine((v) => v.length >= 2, 'Username or email is required'),
   password: z.string().min(6, 'Password must be at least 6 characters'),
 });
 

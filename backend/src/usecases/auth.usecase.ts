@@ -120,11 +120,25 @@ export class AuthUseCase {
   /**
    * Authenticate local email/password users
    */
-  async login(tenantId: string | undefined, email: string, password: string): Promise<LoginResponse> {
+  async login(tenantId: string | undefined, identifier: string, password: string): Promise<LoginResponse> {
     let user = null as any;
 
     if (tenantId) {
-      user = await this.userRepository.findByEmail(tenantId, email);
+      const scopedUser = await pool.query(
+        `SELECT
+            u.id,
+            u.tenant_id AS "tenantId",
+            u.name,
+            u.email,
+            u.password_hash AS "passwordHash",
+            u.status
+         FROM users u
+         WHERE u.tenant_id = $1
+           AND (LOWER(u.email) = LOWER($2) OR LOWER(u.name) = LOWER($2))
+         LIMIT 1`,
+        [tenantId, identifier]
+      );
+      user = scopedUser.rows[0] || null;
     } else {
       const globalUsers = await pool.query(
         `SELECT
@@ -138,10 +152,10 @@ export class AuthUseCase {
          FROM users u
          LEFT JOIN user_roles ur ON ur.user_id = u.id
          LEFT JOIN roles r ON r.id = ur.role_id
-         WHERE LOWER(u.email) = LOWER($1)
+         WHERE LOWER(u.email) = LOWER($1) OR LOWER(u.name) = LOWER($1)
          GROUP BY u.id, u.tenant_id, u.name, u.email, u.password_hash, u.status
          ORDER BY "isSuperAdmin" DESC, u.id ASC`,
-        [email]
+        [identifier]
       );
 
       if (globalUsers.rows.length === 1) {
@@ -157,12 +171,12 @@ export class AuthUseCase {
     }
 
     if (!user || !user.passwordHash) {
-      throw new UnauthorizedError('Invalid email or password credentials');
+      throw new UnauthorizedError('Invalid username/email or password credentials');
     }
 
     const isMatch = await comparePassword(password, user.passwordHash);
     if (!isMatch) {
-      throw new UnauthorizedError('Invalid email or password credentials');
+      throw new UnauthorizedError('Invalid username/email or password credentials');
     }
 
     if (user.status !== 'active') {
