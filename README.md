@@ -51,107 +51,23 @@ Team/
 ## Prasyarat
 
 - [Node.js](https://nodejs.org/) 18+
-- [PostgreSQL](https://postgresql.org/) 14+ (lokal) atau akun [Supabase](https://supabase.com/)
+- Akun [Supabase](https://supabase.com/)
 - Akun [Vercel](https://vercel.com/) (untuk deployment)
 - Akun [GitHub](https://github.com/)
 
 ---
 
-## Development Lokal
-
-### 1. Clone Repository
-
-```bash
-git clone https://github.com/logikaistudio/Team.git
-cd Team
-```
-
-### 2. Setup Database Lokal
-
-Buat database PostgreSQL lokal:
-
-```bash
-createdb epcs_local
-```
-
-Lalu jalankan schema dan seed:
-
-```bash
-psql -h 127.0.0.1 -p 5432 -U $(whoami) -d epcs_local -f db/schema.sql
-psql -h 127.0.0.1 -p 5432 -U $(whoami) -d epcs_local -f db/seed.sql
-```
-
-### 3. Konfigurasi Backend
-
-```bash
-cd backend
-cp .env.example .env
-```
-
-Edit `.env` sesuai database lokal Anda:
-
-```env
-PORT=8081
-NODE_ENV=development
-
-DB_HOST=127.0.0.1
-DB_PORT=5432
-DB_USER=your_postgres_user
-DB_PASSWORD=your_password
-DB_NAME=epcs_local
-DB_SSL=false
-
-JWT_SECRET=change_this_to_a_random_string
-JWT_REFRESH_SECRET=change_this_to_another_random_string
-```
-
-Install dependencies dan jalankan:
-
-```bash
-npm install
-npm run dev
-```
-
-Backend akan berjalan di http://localhost:8081  
-Swagger API docs: http://localhost:8081/api-docs
-
-### 4. Konfigurasi Frontend
-
-```bash
-cd ../frontend
-npm install
-npm run dev
-```
-
-Frontend akan berjalan di http://localhost:3000 (atau port alternatif jika 3000 digunakan).
-
----
-
 ## Deploy ke Supabase
 
-### 1. Jalankan Schema & Seed
+### 1. Jalankan Schema & Seed di Supabase
 
-Buka Supabase Dashboard → SQL Editor, lalu jalankan:
+1. Buka Supabase Dashboard → SQL Editor.
+2. Jalankan isi file `db/schema.sql`.
+3. Jalankan isi file `db/seed.sql`.
 
-1. Copy-paste isi file `db/schema.sql` → Run
-2. Copy-paste isi file `db/seed.sql` → Run
+### 2. Set Environment Variables Backend
 
-Atau via `psql` dari terminal:
-
-```bash
-PGPASSWORD='your_supabase_password' psql \
-  -h db.your-project-ref.supabase.co \
-  -p 5432 \
-  -U postgres \
-  -d postgres \
-  -f db/migrate_to_supabase.sql
-```
-
-Ganti `your-project-ref` dan `your_supabase_password` dengan nilai dari Supabase Dashboard.
-
-### 2. Update Environment Variables
-
-Setelah schema siap, update `backend/.env` untuk production:
+Setelah schema siap, isi `backend/.env` atau environment variables Vercel backend:
 
 ```env
 DATABASE_URL=postgresql://postgres:your_password@db.your-project-ref.supabase.co:5432/postgres
@@ -164,6 +80,44 @@ DB_SSL=true
 
 JWT_SECRET=your_secure_jwt_secret
 JWT_REFRESH_SECRET=your_secure_jwt_refresh_secret
+```
+
+### 3. Set Environment Variables Frontend
+
+Frontend production hanya perlu mengarah ke backend Vercel:
+
+```env
+VITE_API_BASE_URL=/api
+```
+
+---
+
+## Development Lokal
+
+Jika Anda masih ingin menjalankan lokal untuk debugging, backend dan frontend tetap bisa dijalankan, tetapi database produksi tetap harus Supabase.
+
+### 1. Clone Repository
+
+```bash
+git clone https://github.com/logikaistudio/Team.git
+cd Team
+```
+
+### 2. Backend Development
+
+```bash
+cd backend
+cp .env.example .env
+npm install
+npm run dev
+```
+
+### 3. Frontend Development
+
+```bash
+cd ../frontend
+npm install
+npm run dev
 ```
 
 ---
@@ -179,7 +133,7 @@ JWT_REFRESH_SECRET=your_secure_jwt_refresh_secret
 5. **Build Command**: `npm run build`
 6. **Output Directory**: `dist`
 7. Tambahkan environment variable:
-   - `VITE_API_BASE_URL`: URL backend Anda, contoh `https://team-backend.vercel.app/api`
+   - `VITE_API_BASE_URL`: `/api`
 8. Klik **Deploy**
 
 ### Deploy Backend
@@ -188,19 +142,16 @@ JWT_REFRESH_SECRET=your_secure_jwt_refresh_secret
 2. Import repository yang sama
 3. **Root Directory**: `backend`
 4. **Framework Preset**: Other
-5. Tambahkan semua environment variables dari `backend/.env.example`:
+5. Tambahkan semua environment variables backend produksi yang mengarah ke Supabase:
    - `DATABASE_URL`
    - `JWT_SECRET`
    - `JWT_REFRESH_SECRET`
-   - `GOOGLE_CLIENT_ID` (opsional)
-   - `GOOGLE_CLIENT_SECRET` (opsional)
-   - `S3_ENDPOINT`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_BUCKET_NAME` (opsional)
-   - `GEMINI_API_KEY` atau `OPENAI_API_KEY` (opsional)
+   - `DB_SSL=true`
 6. Klik **Deploy**
 
 ### Update Frontend API URL
 
-Setelah backend deploy, salin URL backend dan update `VITE_API_BASE_URL` di project frontend Vercel, lalu redeploy frontend.
+Setelah backend deploy, pastikan `VITE_API_BASE_URL` tetap `/api` lalu redeploy frontend.
 
 ---
 

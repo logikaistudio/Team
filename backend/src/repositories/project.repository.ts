@@ -359,10 +359,6 @@ export class ProjectRepository implements IProjectRepository {
     }
 
     // Step 4: Compute project-level progress and update project dates + progress
-    const projectProgress = projectProgressDenominator > 0
-      ? projectProgressNumerator / projectProgressDenominator
-      : 0;
-
     await pool.query(
       `UPDATE projects SET start_date = $1, end_date = $2 WHERE tenant_id = $3 AND id = $4`,
       [minDate, maxDate, tenantId, projectId]

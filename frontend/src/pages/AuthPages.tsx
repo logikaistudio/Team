@@ -7,7 +7,7 @@ import { KeyRound, Mail, User, Building, Globe, ShieldAlert } from 'lucide-react
 export const LoginPage: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [tenantId, setTenantId] = useState('00000000-0000-0000-0000-000000000000'); // Sample tenant UUID
+  const [tenantId, setTenantId] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const setAuth = useStore((state) => state.setAuth);
@@ -18,20 +18,6 @@ export const LoginPage: React.FC = () => {
     setError('');
     setLoading(true);
     try {
-      // Direct mock fallback for local use if backend isn't actively running
-      if ((email === 'superadmin' && password === 'password123') || email === 'admin@epcs.com') {
-        const mockUser = {
-          id: '1',
-          name: 'Super Admin',
-          email: email,
-          tenantId: '1',
-          roles: ['super_admin'],
-        };
-        setAuth(mockUser, 'mock_access_token');
-        navigate('/');
-        return;
-      }
-
       const res = await request<{ user: any; accessToken: string }>('/auth/login', {
         method: 'POST',
         body: JSON.stringify({ tenantId, email, password }),

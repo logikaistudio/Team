@@ -2,7 +2,13 @@ import { Pool, PoolClient } from 'pg';
 import { config } from './index';
 import { logger } from '../utils/logger';
 
-// Support both DATABASE_URL (Supabase direct) and individual DB_* variables
+const isProduction = process.env.NODE_ENV === 'production';
+
+if (isProduction && !process.env.DATABASE_URL) {
+  throw new Error('DATABASE_URL is required in production. Configure Supabase connection settings in Vercel.');
+}
+
+// Support both DATABASE_URL (Supabase direct) and individual DB_* variables in development
 const poolConfig = process.env.DATABASE_URL
   ? {
       connectionString: process.env.DATABASE_URL,
