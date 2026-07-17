@@ -2,9 +2,12 @@ import { useStore } from '../store/useStore';
 
 const env = (import.meta as any).env || {};
 const rawBaseUrl = env.VITE_API_BASE_URL as string | undefined;
-const BASE_URL = !rawBaseUrl || rawBaseUrl.includes('your-backend-url')
+const isProduction = env.PROD === true || env.MODE === 'production';
+const BASE_URL = isProduction
   ? '/api'
-  : rawBaseUrl.replace(/\/+$/, '');
+  : (!rawBaseUrl || rawBaseUrl.includes('your-backend-url')
+      ? '/api'
+      : rawBaseUrl.replace(/\/+$/, ''));
 
 export async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = useStore.getState().accessToken;
