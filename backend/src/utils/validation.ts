@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 export const registerSchema = z.object({
   tenantName: z.string().min(2, 'Tenant name must be at least 2 characters'),
   domainName: z.string().min(3, 'Domain must be at least 3 characters'),
@@ -10,7 +12,11 @@ export const registerSchema = z.object({
 });
 
 export const loginSchema = z.object({
-  tenantId: z.string().uuid('Invalid Tenant ID format'),
+  tenantId: z
+    .string()
+    .optional()
+    .transform((v) => v?.trim())
+    .refine((v) => !v || uuidRegex.test(v), 'Invalid Tenant ID format'),
   email: z.string().email('Invalid email address'),
   password: z.string().min(6, 'Password must be at least 6 characters'),
 });

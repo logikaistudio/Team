@@ -42,7 +42,8 @@ export const LoginPage: React.FC = () => {
     e.preventDefault();
     setError('');
 
-    if (!isUuid(tenantId.trim())) {
+    const tenant = tenantId.trim();
+    if (tenant && !isUuid(tenant)) {
       setError('Tenant ID harus format UUID valid.');
       return;
     }
@@ -51,9 +52,11 @@ export const LoginPage: React.FC = () => {
     try {
       const res = await request<{ user: any; accessToken: string }>('/auth/login', {
         method: 'POST',
-        body: JSON.stringify({ tenantId, email, password }),
+        body: JSON.stringify({ tenantId: tenant || undefined, email, password }),
       });
-      localStorage.setItem('epcs_last_tenant_id', tenantId.trim());
+      if (tenant) {
+        localStorage.setItem('epcs_last_tenant_id', tenant);
+      }
       setAuth(res.user, res.accessToken);
       navigate('/');
     } catch (err: any) {
@@ -86,7 +89,7 @@ export const LoginPage: React.FC = () => {
 
         <form onSubmit={handleLogin} className="space-y-4">
           <div>
-            <label className="text-xs font-semibold text-zinc-400 block mb-1">Tenant ID</label>
+            <label className="text-xs font-semibold text-zinc-400 block mb-1">Tenant ID (opsional untuk superuser)</label>
             <div className="relative">
               <Building size={14} className="absolute left-3 top-3.5 text-zinc-500" />
               <input

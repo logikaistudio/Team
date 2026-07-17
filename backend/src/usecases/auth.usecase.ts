@@ -120,8 +120,42 @@ export class AuthUseCase {
   /**
    * Authenticate local email/password users
    */
-  async login(tenantId: string, email: string, password: string): Promise<LoginResponse> {
-    const user = await this.userRepository.findByEmail(tenantId, email);
+  async login(tenantId: string | undefined, email: string, password: string): Promise<LoginResponse> {
+    let user = null as any;
+
+    if (tenantId) {
+      user = await this.userRepository.findByEmail(tenantId, email);
+    } else {
+      const globalUsers = await pool.query(
+        `SELECT
+            u.id,
+            u.tenant_id AS "tenantId",
+            u.name,
+            u.email,
+            u.password_hash AS "passwordHash",
+            u.status,
+            BOOL_OR(r.code = 'super_admin') AS "isSuperAdmin"
+         FROM users u
+         LEFT JOIN user_roles ur ON ur.user_id = u.id
+         LEFT JOIN roles r ON r.id = ur.role_id
+         WHERE LOWER(u.email) = LOWER($1)
+         GROUP BY u.id, u.tenant_id, u.name, u.email, u.password_hash, u.status
+         ORDER BY "isSuperAdmin" DESC, u.id ASC`,
+        [email]
+      );
+
+      if (globalUsers.rows.length === 1) {
+        user = globalUsers.rows[0];
+      } else if (globalUsers.rows.length > 1) {
+        const superAdmins = globalUsers.rows.filter((r) => r.isSuperAdmin === true);
+        if (superAdmins.length === 1) {
+          user = superAdmins[0];
+        } else {
+          throw new BadRequestError('Tenant ID diperlukan untuk akun ini.');
+        }
+      }
+    }
+
     if (!user || !user.passwordHash) {
       throw new UnauthorizedError('Invalid email or password credentials');
     }
