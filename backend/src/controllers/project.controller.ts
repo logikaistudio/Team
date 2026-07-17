@@ -7,6 +7,8 @@ import { documentRouter } from './document.controller';
 
 export const projectRouter = Router();
 const projectRepository = new ProjectRepository();
+const isUuid = (value: string): boolean =>
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 
 projectRouter.use(authenticate);
 
@@ -41,6 +43,9 @@ projectRouter.get('/', async (req: Request, res: Response, next: NextFunction) =
 projectRouter.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const tenantId = req.tenantId!;
+    if (!isUuid(req.params.id)) {
+      return res.status(400).json({ message: 'Invalid project id format' });
+    }
     const project = await projectRepository.findById(tenantId, req.params.id);
     if (!project) {
       res.status(404).json({ message: 'Project not found' });
@@ -57,6 +62,9 @@ projectRouter.put('/:id', async (req: Request, res: Response, next: NextFunction
   try {
     const tenantId = req.tenantId!;
     const id = req.params.id;
+    if (!isUuid(id)) {
+      return res.status(400).json({ message: 'Invalid project id format' });
+    }
     const check = projectSchema.safeParse(req.body);
     if (!check.success) {
       throw new BadRequestError(check.error.errors.map((e) => e.message).join(', '));
@@ -73,6 +81,9 @@ projectRouter.delete('/:id', async (req: Request, res: Response, next: NextFunct
   try {
     const tenantId = req.tenantId!;
     const id = req.params.id;
+    if (!isUuid(id)) {
+      return res.status(400).json({ message: 'Invalid project id format' });
+    }
     const ok = await projectRepository.delete(tenantId, id);
     if (!ok) return res.status(404).json({ message: 'Project not found' });
     res.status(204).send();
@@ -99,6 +110,9 @@ projectRouter.post('/wbs', async (req: Request, res: Response, next: NextFunctio
 projectRouter.get('/:projectId/wbs', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const tenantId = req.tenantId!;
+    if (!isUuid(req.params.projectId)) {
+      return res.status(400).json({ message: 'Invalid project id format' });
+    }
     const nodes = await projectRepository.getWBSNodes(tenantId, req.params.projectId);
     res.json(nodes);
   } catch (error) {
@@ -111,6 +125,9 @@ projectRouter.put('/wbs/:id', async (req: Request, res: Response, next: NextFunc
   try {
     const tenantId = req.tenantId!;
     const id = req.params.id;
+    if (!isUuid(id)) {
+      return res.status(400).json({ message: 'Invalid WBS id format' });
+    }
     const check = wbsNodeSchema.partial().safeParse(req.body);
     if (!check.success) {
       throw new BadRequestError(check.error.errors.map((e) => e.message).join(', '));
@@ -127,6 +144,9 @@ projectRouter.delete('/wbs/:id', async (req: Request, res: Response, next: NextF
   try {
     const tenantId = req.tenantId!;
     const id = req.params.id;
+    if (!isUuid(id)) {
+      return res.status(400).json({ message: 'Invalid WBS id format' });
+    }
     const ok = await projectRepository.deleteWBS(tenantId, id);
     if (!ok) return res.status(404).json({ message: 'WBS node not found' });
     res.status(204).send();
@@ -157,6 +177,9 @@ projectRouter.post('/tasks', async (req: Request, res: Response, next: NextFunct
 projectRouter.get('/:projectId/tasks', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const tenantId = req.tenantId!;
+    if (!isUuid(req.params.projectId)) {
+      return res.status(400).json({ message: 'Invalid project id format' });
+    }
     const tasks = await projectRepository.getTasks(tenantId, req.params.projectId);
     res.json(tasks);
   } catch (error) {
@@ -169,6 +192,9 @@ projectRouter.put('/tasks/:id', async (req: Request, res: Response, next: NextFu
   try {
     const tenantId = req.tenantId!;
     const id = req.params.id;
+    if (!isUuid(id)) {
+      return res.status(400).json({ message: 'Invalid task id format' });
+    }
     const check = taskSchema.partial().safeParse(req.body);
     if (!check.success) {
       throw new BadRequestError(check.error.errors.map((e) => e.message).join(', '));
@@ -189,6 +215,9 @@ projectRouter.delete('/tasks/:id', async (req: Request, res: Response, next: Nex
   try {
     const tenantId = req.tenantId!;
     const id = req.params.id;
+    if (!isUuid(id)) {
+      return res.status(400).json({ message: 'Invalid task id format' });
+    }
     // Find task first to get projectId for rollup
     const existing = await projectRepository.findTaskById(tenantId, id);
     const ok = await projectRepository.deleteTask(tenantId, id);

@@ -5,10 +5,11 @@ import { pool } from '../config/database';
 export class ProjectRepository implements IProjectRepository {
   async create(tenantId: string, project: Partial<Project>): Promise<Project> {
     const query = `
-      INSERT INTO projects (tenant_id, name, code, description, status_id, start_date, end_date, budget, currency, location, progress_percent)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 0.00)
+      INSERT INTO projects (tenant_id, name, code, description, status_id, start_date, end_date, budget, currency, location)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
       RETURNING id, tenant_id AS "tenantId", name, code, description, status_id AS "statusId",
-                start_date AS "startDate", end_date AS "endDate", budget, currency, location, progress_percent AS "progressPercent", created_at AS "createdAt", updated_at AS "updatedAt"
+                start_date AS "startDate", end_date AS "endDate", budget, currency, location,
+                0.00::numeric AS "progressPercent", created_at AS "createdAt", updated_at AS "updatedAt"
     `;
     const values = [
       tenantId,
@@ -29,7 +30,8 @@ export class ProjectRepository implements IProjectRepository {
   async findById(tenantId: string, id: string): Promise<Project | null> {
     const query = `
       SELECT id, tenant_id AS "tenantId", name, code, description, status_id AS "statusId",
-             start_date AS "startDate", end_date AS "endDate", budget, currency, location, progress_percent AS "progressPercent", created_at AS "createdAt", updated_at AS "updatedAt"
+             start_date AS "startDate", end_date AS "endDate", budget, currency, location,
+             0.00::numeric AS "progressPercent", created_at AS "createdAt", updated_at AS "updatedAt"
       FROM projects
       WHERE tenant_id = $1 AND id = $2
     `;
@@ -40,7 +42,8 @@ export class ProjectRepository implements IProjectRepository {
   async findByCode(tenantId: string, code: string): Promise<Project | null> {
     const query = `
       SELECT id, tenant_id AS "tenantId", name, code, description, status_id AS "statusId",
-             start_date AS "startDate", end_date AS "endDate", budget, currency, location, progress_percent AS "progressPercent", created_at AS "createdAt", updated_at AS "updatedAt"
+             start_date AS "startDate", end_date AS "endDate", budget, currency, location,
+             0.00::numeric AS "progressPercent", created_at AS "createdAt", updated_at AS "updatedAt"
       FROM projects
       WHERE tenant_id = $1 AND code = $2
     `;
@@ -51,7 +54,8 @@ export class ProjectRepository implements IProjectRepository {
   async findAll(tenantId: string): Promise<Project[]> {
     const query = `
       SELECT id, tenant_id AS "tenantId", name, code, description, status_id AS "statusId",
-             start_date AS "startDate", end_date AS "endDate", budget, currency, location, progress_percent AS "progressPercent", created_at AS "createdAt", updated_at AS "updatedAt"
+             start_date AS "startDate", end_date AS "endDate", budget, currency, location,
+             0.00::numeric AS "progressPercent", created_at AS "createdAt", updated_at AS "updatedAt"
       FROM projects
       WHERE tenant_id = $1
       ORDER BY created_at DESC
@@ -71,11 +75,11 @@ export class ProjectRepository implements IProjectRepository {
           end_date = COALESCE($6, end_date),
           budget = COALESCE($7, budget),
           currency = COALESCE($8, currency),
-          location = COALESCE($9, location),
-          progress_percent = COALESCE($10, progress_percent)
-      WHERE tenant_id = $11 AND id = $12
+            location = COALESCE($9, location)
+          WHERE tenant_id = $10 AND id = $11
       RETURNING id, tenant_id AS "tenantId", name, code, description, status_id AS "statusId",
-                start_date AS "startDate", end_date AS "endDate", budget, currency, location, progress_percent AS "progressPercent", created_at AS "createdAt", updated_at AS "updatedAt"
+              start_date AS "startDate", end_date AS "endDate", budget, currency, location,
+              0.00::numeric AS "progressPercent", created_at AS "createdAt", updated_at AS "updatedAt"
     `;
     const values = [
       project.name,
@@ -87,7 +91,6 @@ export class ProjectRepository implements IProjectRepository {
       project.budget,
       project.currency,
       project.location,
-      project.progressPercent,
       tenantId,
       id,
     ];
@@ -132,10 +135,10 @@ export class ProjectRepository implements IProjectRepository {
   // WBS
   async createWBS(tenantId: string, node: Partial<WBSNode>): Promise<WBSNode> {
     const query = `
-      INSERT INTO wbs (tenant_id, project_id, parent_id, code, name, description, weight, progress_percent)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, 0.00)
+      INSERT INTO wbs (tenant_id, project_id, parent_id, code, name, description, weight)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
       RETURNING id, tenant_id AS "tenantId", project_id AS "projectId", parent_id AS "parentId",
-                code, name, description, weight, progress_percent AS "progressPercent", created_at AS "createdAt", updated_at AS "updatedAt"
+                code, name, description, weight, 0.00::numeric AS "progressPercent", created_at AS "createdAt", updated_at AS "updatedAt"
     `;
     const values = [
       tenantId,
@@ -153,7 +156,7 @@ export class ProjectRepository implements IProjectRepository {
   async getWBSNodes(tenantId: string, projectId: string): Promise<WBSNode[]> {
     const query = `
       SELECT id, tenant_id AS "tenantId", project_id AS "projectId", parent_id AS "parentId",
-             code, name, description, weight, progress_percent AS "progressPercent", created_at AS "createdAt", updated_at AS "updatedAt"
+             code, name, description, weight, 0.00::numeric AS "progressPercent", created_at AS "createdAt", updated_at AS "updatedAt"
       FROM wbs
       WHERE tenant_id = $1 AND project_id = $2
       ORDER BY code ASC
@@ -165,7 +168,7 @@ export class ProjectRepository implements IProjectRepository {
   async findWBSById(tenantId: string, id: string): Promise<WBSNode | null> {
     const query = `
       SELECT id, tenant_id AS "tenantId", project_id AS "projectId", parent_id AS "parentId",
-             code, name, description, weight, progress_percent AS "progressPercent", created_at AS "createdAt", updated_at AS "updatedAt"
+             code, name, description, weight, 0.00::numeric AS "progressPercent", created_at AS "createdAt", updated_at AS "updatedAt"
       FROM wbs
       WHERE tenant_id = $1 AND id = $2
     `;
@@ -179,13 +182,12 @@ export class ProjectRepository implements IProjectRepository {
       SET code = COALESCE($1, code),
           name = COALESCE($2, name),
           description = COALESCE($3, description),
-          weight = COALESCE($4, weight),
-          progress_percent = COALESCE($5, progress_percent)
-      WHERE tenant_id = $6 AND id = $7
+          weight = COALESCE($4, weight)
+      WHERE tenant_id = $5 AND id = $6
       RETURNING id, tenant_id AS "tenantId", project_id AS "projectId", parent_id AS "parentId",
-                code, name, description, weight, progress_percent AS "progressPercent", created_at AS "createdAt", updated_at AS "updatedAt"
+                code, name, description, weight, 0.00::numeric AS "progressPercent", created_at AS "createdAt", updated_at AS "updatedAt"
     `;
-    const values = [node.code, node.name, node.description, node.weight, node.progressPercent, tenantId, id];
+    const values = [node.code, node.name, node.description, node.weight, tenantId, id];
     const { rows } = await pool.query(query, values);
     return rows[0];
   }
@@ -350,10 +352,7 @@ export class ProjectRepository implements IProjectRepository {
         nodeProgress = nodeTasks.reduce((sum, t) => sum + (Number(t.progressPercent) || 0), 0) / nodeTasks.length;
       }
 
-      await pool.query(
-        `UPDATE wbs SET progress_percent = $1 WHERE tenant_id = $2 AND id = $3`,
-        [Math.round(nodeProgress * 100) / 100, tenantId, node.id]
-      );
+      // Keep rollup in-memory only when schema does not include wbs.progress_percent.
 
       projectProgressNumerator += nodeProgress * (Number(node.weight) || 0);
       projectProgressDenominator += Number(node.weight) || 0;
@@ -365,8 +364,8 @@ export class ProjectRepository implements IProjectRepository {
       : 0;
 
     await pool.query(
-      `UPDATE projects SET progress_percent = $1, start_date = $2, end_date = $3 WHERE tenant_id = $4 AND id = $5`,
-      [Math.round(projectProgress * 100) / 100, minDate, maxDate, tenantId, projectId]
+      `UPDATE projects SET start_date = $1, end_date = $2 WHERE tenant_id = $3 AND id = $4`,
+      [minDate, maxDate, tenantId, projectId]
     );
   }
 }

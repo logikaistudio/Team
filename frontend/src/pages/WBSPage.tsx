@@ -5,38 +5,7 @@ import { GanttChart, WBSNode, Task, Dependency } from '../components/GanttChart'
 import clsx from 'clsx';
 import { request } from '../services/api';
 
-const initialData: WBSNode[] = [
-  {
-    id: 'n1',
-    code: '1.0',
-    name: 'Engineering Design & Permits',
-    weight: 15.00,
-    tasks: [
-      { id: 't1', name: 'Detailed Drawing Approval', start: '2026-06-01', end: '2026-06-15', cost: 12000, progress: 100, status: 'completed', resources: ['Lead Engineer'] },
-      { id: 't2', name: 'Local Government Permits', start: '2026-06-10', end: '2026-06-30', cost: 8000, progress: 40, status: 'in_progress', resources: ['Legal Team'] },
-      { id: 't_ms1', name: 'Design Approved', start: '2026-06-16', end: '2026-06-16', cost: 0, progress: 100, status: 'completed', isMilestone: true, dependencies: [{ taskId: 't1', type: 'FS' }] }
-    ]
-  },
-  {
-    id: 'n2',
-    code: '2.0',
-    name: 'Civil Works & Construction',
-    weight: 55.00,
-    tasks: [
-      { id: 't3', name: 'Site Clearing & Grading', start: '2026-07-01', end: '2026-07-20', cost: 45000, progress: 0, status: 'not_started', resources: ['Excavator', 'Operator'] },
-      { id: 't4', name: 'Foundation Concrete Pouring', start: '2026-07-21', end: '2026-08-15', cost: 85000, progress: 0, status: 'not_started', resources: ['Concrete Supplier'], dependencies: [{ taskId: 't3', type: 'FS' }] }
-    ]
-  },
-  {
-    id: 'n3',
-    code: '3.0',
-    name: 'Mechanical & Electrical Assembly',
-    weight: 30.00,
-    tasks: [
-      { id: 't5', name: 'Cable Trays Installation', start: '2026-08-16', end: '2026-08-30', cost: 20000, progress: 0, status: 'not_started', resources: ['Electrician Team A'], dependencies: [{ taskId: 't4', type: 'FS' }] }
-    ]
-  }
-];
+const initialData: WBSNode[] = [];
 
 export const WBSPage: React.FC = () => {
   const [nodes, setNodes] = useState<WBSNode[]>(initialData);
