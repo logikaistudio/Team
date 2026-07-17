@@ -32,7 +32,29 @@ const rawDatabaseUrl =
   process.env.SUPABASE_DB_URL ||
   '';
 const databaseUrl = rawDatabaseUrl.trim();
-const hasDatabaseUrl = Boolean(databaseUrl);
+
+function resolveEffectiveDatabaseUrl(input: string, expectedHost: string): string {
+  if (!input || !expectedHost) return input;
+
+  try {
+    const parsed = new URL(input);
+    const currentHost = parsed.hostname.toLowerCase();
+    const targetHost = expectedHost.toLowerCase();
+
+    if (currentHost !== targetHost) {
+      parsed.hostname = expectedHost;
+      logger.warn(`DATABASE_URL host (${currentHost}) mismatches SUPABASE_URL. Using host ${expectedHost}.`);
+      return parsed.toString();
+    }
+  } catch {
+    // Keep original string when URL parser cannot handle custom DSN format.
+  }
+
+  return input;
+}
+
+const effectiveDatabaseUrl = resolveEffectiveDatabaseUrl(databaseUrl, derivedSupabaseHost);
+const hasDatabaseUrl = Boolean(effectiveDatabaseUrl);
 const hasDbParts = Boolean(effectiveDbHost && process.env.DB_USER && process.env.DB_NAME);
 const isLocalHost = /^(localhost|127\.0\.0\.1)$/i.test(effectiveDbHost || '');
 
@@ -55,7 +77,7 @@ if (isProduction && !hasDatabaseUrl && isLocalHost) {
 // Support both DATABASE_URL (Supabase direct) and individual DB_* variables in development
 const poolConfig = hasDatabaseUrl
   ? {
-  connectionString: databaseUrl,
+  connectionString: effectiveDatabaseUrl,
       ssl: { rejectUnauthorized: false },
       max: 20,
       idleTimeoutMillis: 30000,
