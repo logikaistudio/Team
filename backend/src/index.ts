@@ -3,9 +3,6 @@ import cors from 'cors';
 import { config } from './config';
 import { logger } from './utils/logger';
 import { authRouter } from './controllers/auth.controller';
-import { projectRouter } from './controllers/project.controller';
-import { analyticsRouter } from './controllers/analytics.controller';
-import { enterpriseRouter } from './controllers/enterprise.controller';
 import { errorHandler } from './middlewares/errorHandler';
 import swaggerUi from 'swagger-ui-express';
 import { pool } from './config/database';
@@ -19,9 +16,41 @@ app.use(express.json());
 
 // Routes Setup
 app.use('/api/auth', authRouter);
-app.use('/api/projects', projectRouter);
-app.use('/api/analytics', analyticsRouter);
-app.use('/api/enterprise', enterpriseRouter);
+
+// Load optional routers defensively so auth endpoints remain available
+// even if one module fails at import/runtime in serverless deployment.
+const optionalRoutersEnabled =
+  process.env.ENABLE_OPTIONAL_ROUTERS === '1' ||
+  process.env.ENABLE_OPTIONAL_ROUTERS === 'true' ||
+  !isVercelRuntime;
+
+if (optionalRoutersEnabled) {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { projectRouter } = require('./controllers/project.controller');
+    app.use('/api/projects', projectRouter);
+  } catch (err: any) {
+    logger.error(`Failed to load project router: ${err?.message || err}`);
+  }
+
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { analyticsRouter } = require('./controllers/analytics.controller');
+    app.use('/api/analytics', analyticsRouter);
+  } catch (err: any) {
+    logger.error(`Failed to load analytics router: ${err?.message || err}`);
+  }
+
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { enterpriseRouter } = require('./controllers/enterprise.controller');
+    app.use('/api/enterprise', enterpriseRouter);
+  } catch (err: any) {
+    logger.error(`Failed to load enterprise router: ${err?.message || err}`);
+  }
+} else {
+  logger.warn('Optional routers are disabled in this runtime (auth-only mode).');
+}
 
 // Serve uploaded documents statically
 app.use('/uploads', express.static('uploads'));
@@ -42,6 +71,10 @@ if (swaggerDocument) {
 // Health Check Endpoint
 app.get('/health', (_req, res) => {
   res.json({ status: 'UP', timestamp: new Date() });
+});
+
+app.get('/api/health', (_req, res) => {
+  res.json({ status: 'UP', mode: optionalRoutersEnabled ? 'full' : 'auth-only', timestamp: new Date() });
 });
 
 // Centralized Error Boundary
@@ -98,3 +131,4 @@ if (process.env.NODE_ENV !== 'test' && !isVercelRuntime) {
 }
 
 export { app };
+export default app;
