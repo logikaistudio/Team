@@ -15,7 +15,15 @@ const normalizedDbHost = rawDbHost
   .replace(/^https?:\/\//i, '')
   .replace(/\/.*$/, '')
   .replace(/:\d+$/, '');
-const effectiveDbHost = normalizedDbHost || derivedSupabaseHost || config.db.host;
+const shouldPreferDerivedHost = Boolean(
+  isProduction &&
+  derivedSupabaseHost &&
+  normalizedDbHost &&
+  normalizedDbHost.toLowerCase() !== derivedSupabaseHost.toLowerCase()
+);
+const effectiveDbHost = shouldPreferDerivedHost
+  ? derivedSupabaseHost
+  : (normalizedDbHost || derivedSupabaseHost || config.db.host);
 
 const rawDatabaseUrl =
   process.env.DATABASE_URL ||
@@ -30,6 +38,10 @@ const isLocalHost = /^(localhost|127\.0\.0\.1)$/i.test(effectiveDbHost || '');
 
 if (isProduction && !rawDbHost && derivedSupabaseHost) {
   logger.warn(`DB_HOST is not set. Using derived Supabase DB host: ${derivedSupabaseHost}`);
+}
+
+if (shouldPreferDerivedHost) {
+  logger.warn(`DB_HOST (${normalizedDbHost}) mismatches SUPABASE_URL. Using derived host ${derivedSupabaseHost}.`);
 }
 
 if (isProduction && !hasDatabaseUrl && !hasDbParts) {
