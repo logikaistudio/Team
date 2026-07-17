@@ -8,10 +8,10 @@ import { analyticsRouter } from './controllers/analytics.controller';
 import { enterpriseRouter } from './controllers/enterprise.controller';
 import { errorHandler } from './middlewares/errorHandler';
 import swaggerUi from 'swagger-ui-express';
-import * as swaggerDocument from '../swagger.json';
 import { pool } from './config/database';
 
 const app = express();
+const isVercelRuntime = process.env.VERCEL === '1' || process.env.VERCEL === 'true';
 
 // Middlewares
 app.use(cors({ origin: '*' }));
@@ -26,8 +26,18 @@ app.use('/api/enterprise', enterpriseRouter);
 // Serve uploaded documents statically
 app.use('/uploads', express.static('uploads'));
 
-// Swagger Documentation Route
-app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
+// Swagger docs are optional in serverless runtime; avoid crashing when json import/bundle differs.
+let swaggerDocument: any = null;
+try {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  swaggerDocument = require('../swagger.json');
+} catch (err) {
+  logger.warn('Swagger document not available in current runtime. /api-docs disabled.');
+}
+
+if (swaggerDocument) {
+  app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
+}
 
 // Health Check Endpoint
 app.get('/health', (_req, res) => {
@@ -37,8 +47,8 @@ app.get('/health', (_req, res) => {
 // Centralized Error Boundary
 app.use(errorHandler);
 
-// Launch HTTP Server
-if (process.env.NODE_ENV !== 'test') {
+// Launch HTTP server only for local runtime. In Vercel, export app without listen().
+if (process.env.NODE_ENV !== 'test' && !isVercelRuntime) {
   (async () => {
     try {
       // Skip auto-migrations when running against an unreachable network host
@@ -80,7 +90,9 @@ if (process.env.NODE_ENV !== 'test') {
     }
     app.listen(config.port, () => {
       logger.info(`EPCS Backend Server listening at http://localhost:${config.port}`);
-      logger.info(`Swagger API Documentation available at http://localhost:${config.port}/api-docs`);
+      if (swaggerDocument) {
+        logger.info(`Swagger API Documentation available at http://localhost:${config.port}/api-docs`);
+      }
     });
   })();
 }
