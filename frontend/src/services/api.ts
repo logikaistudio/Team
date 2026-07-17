@@ -28,6 +28,8 @@ export async function request<T>(path: string, options: RequestInit = {}): Promi
     } catch (e) {
       message = errorText || message;
     }
+    // eslint-disable-next-line no-console
+    console.error('API error:', path, response.status, message);
     throw new Error(message);
   }
 
