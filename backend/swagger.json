@@ -1,0 +1,214 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Enterprise Project Control System (EPCS) API",
+    "version": "1.0.0",
+    "description": "Production-ready REST APIs for the EPCS multi-tenant SaaS application."
+  },
+  "servers": [
+    {
+      "url": "http://localhost:4000/api",
+      "description": "Local development server"
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    }
+  },
+  "security": [
+    {
+      "BearerAuth": []
+    }
+  ],
+  "paths": {
+    "/auth/register": {
+      "post": {
+        "summary": "Register a new SaaS Tenant and Admin User",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["tenantName", "domainName", "planCode", "adminName", "adminEmail", "adminPassword"],
+                "properties": {
+                  "tenantName": { "type": "string" },
+                  "domainName": { "type": "string" },
+                  "planCode": { "type": "string", "enum": ["starter", "professional", "enterprise"] },
+                  "adminName": { "type": "string" },
+                  "adminEmail": { "type": "string" },
+                  "adminPassword": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "Tenant created successfully" },
+          "400": { "description": "Invalid input validation errors" }
+        }
+      }
+    },
+    "/auth/login": {
+      "post": {
+        "summary": "Authenticate user credentials",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["tenantId", "email", "password"],
+                "properties": {
+                  "tenantId": { "type": "string", "format": "uuid" },
+                  "email": { "type": "string" },
+                  "password": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Login success" },
+          "401": { "description": "Authentication failure" }
+        }
+      }
+    },
+    "/projects": {
+      "post": {
+        "summary": "Create a new project within tenant",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["name", "code", "statusId", "startDate", "endDate"],
+                "properties": {
+                  "name": { "type": "string" },
+                  "code": { "type": "string" },
+                  "description": { "type": "string" },
+                  "statusId": { "type": "string", "format": "uuid" },
+                  "startDate": { "type": "string", "format": "date" },
+                  "endDate": { "type": "string", "format": "date" },
+                  "budget": { "type": "number" },
+                  "currency": { "type": "string", "default": "USD" },
+                  "location": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "Project created" }
+        }
+      },
+      "get": {
+        "summary": "Get all projects for the tenant",
+        "responses": {
+          "200": { "description": "List of projects" }
+        }
+      }
+    },
+    "/projects/wbs": {
+      "post": {
+        "summary": "Create a WBS node for a project",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["projectId", "code", "name"],
+                "properties": {
+                  "projectId": { "type": "string", "format": "uuid" },
+                  "parentId": { "type": "string", "format": "uuid" },
+                  "code": { "type": "string" },
+                  "name": { "type": "string" },
+                  "description": { "type": "string" },
+                  "weight": { "type": "number" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "WBS created" }
+        }
+      }
+    },
+    "/projects/{projectId}/wbs": {
+      "get": {
+        "summary": "Get hierarchical WBS list of nodes",
+        "parameters": [
+          { "name": "projectId", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "List of WBS nodes" }
+        }
+      }
+    },
+    "/analytics/{projectId}/evm": {
+      "get": {
+        "summary": "Retrieve EVM indexes (PV, EV, AC, SPI, CPI, SV, CV)",
+        "parameters": [
+          { "name": "projectId", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "date", "in": "query", "schema": { "type": "string", "format": "date" } }
+        ],
+        "responses": {
+          "200": { "description": "EVM metric indices" }
+        }
+      }
+    },
+    "/analytics/{projectId}/s-curve": {
+      "get": {
+        "summary": "Retrieve monthly progress S-Curve data points (Planned vs Actual vs Forecast)",
+        "parameters": [
+          { "name": "projectId", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "S-Curve series values" }
+        }
+      }
+    },
+    "/analytics/{projectId}/health-score": {
+      "get": {
+        "summary": "Retrieve project composite health index (0-100) and traffic light status",
+        "parameters": [
+          { "name": "projectId", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Overall health parameters and scores" }
+        }
+      }
+    },
+    "/analytics/{projectId}/ai-report": {
+      "post": {
+        "summary": "Request AI summary generated reports",
+        "parameters": [
+          { "name": "projectId", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "type": { "type": "string", "enum": ["weekly", "monthly", "forecast"] }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Text result summarizing project status and delay alerts" }
+        }
+      }
+    }
+  }
+}
