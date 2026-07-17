@@ -3,13 +3,20 @@ import { config } from './index';
 import { logger } from '../utils/logger';
 
 const isProduction = process.env.NODE_ENV === 'production';
+const hasDatabaseUrl = Boolean(process.env.DATABASE_URL);
+const hasDbParts = Boolean(process.env.DB_HOST && process.env.DB_USER && process.env.DB_NAME);
+const isLocalHost = /^(localhost|127\.0\.0\.1)$/i.test(process.env.DB_HOST || '');
 
-if (isProduction && !process.env.DATABASE_URL) {
-  throw new Error('DATABASE_URL is required in production. Configure Supabase connection settings in Vercel.');
+if (isProduction && !hasDatabaseUrl && !hasDbParts) {
+  logger.error('Database configuration is missing in production. Set DATABASE_URL or DB_HOST/DB_USER/DB_NAME in Vercel.');
+}
+
+if (isProduction && !hasDatabaseUrl && isLocalHost) {
+  logger.error('Production DB_HOST points to localhost/127.0.0.1. Update it to your Supabase host.');
 }
 
 // Support both DATABASE_URL (Supabase direct) and individual DB_* variables in development
-const poolConfig = process.env.DATABASE_URL
+const poolConfig = hasDatabaseUrl
   ? {
       connectionString: process.env.DATABASE_URL,
       ssl: { rejectUnauthorized: false },

@@ -3,16 +3,17 @@ import path from 'path';
 
 // Load environmental variables
 dotenv.config({ path: path.join(__dirname, '../../.env') });
+const isProduction = (process.env.NODE_ENV || 'development') === 'production';
 
 export const config = {
   port: parseInt(process.env.PORT || '4000', 10),
   nodeEnv: process.env.NODE_ENV || 'development',
   db: {
-    host: process.env.DB_HOST || '127.0.0.1',
+    host: process.env.DB_HOST || (isProduction ? '' : '127.0.0.1'),
     port: parseInt(process.env.DB_PORT || '5432', 10),
-    user: process.env.DB_USER || 'postgres',
-    password: process.env.DB_PASSWORD || 'postgres',
-    database: process.env.DB_NAME || 'epcs_local',
+    user: process.env.DB_USER || (isProduction ? '' : 'postgres'),
+    password: process.env.DB_PASSWORD || (isProduction ? '' : 'postgres'),
+    database: process.env.DB_NAME || (isProduction ? '' : 'epcs_local'),
   },
   jwt: {
     secret: process.env.JWT_SECRET || 'super_secret_jwt_access_token_key_change_me',

@@ -12,10 +12,18 @@ export const LoginPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const setAuth = useStore((state) => state.setAuth);
   const navigate = useNavigate();
+  const isUuid = (value: string): boolean =>
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+
+    if (!isUuid(tenantId.trim())) {
+      setError('Tenant ID harus format UUID valid.');
+      return;
+    }
+
     setLoading(true);
     try {
       const res = await request<{ user: any; accessToken: string }>('/auth/login', {
