@@ -6,6 +6,8 @@ import clsx from 'clsx';
 import { request } from '../services/api';
 
 const initialData: WBSNode[] = [];
+const isUuid = (value: string): boolean =>
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 
 export const WBSPage: React.FC = () => {
   const [nodes, setNodes] = useState<WBSNode[]>(initialData);
@@ -899,6 +901,15 @@ export const WBSPage: React.FC = () => {
         dependencies: editTaskForm.dependencies.length > 0 ? editTaskForm.dependencies : undefined
       } as any;
 
+      if (!isUuid(editingTask.id)) {
+        setNodes(nodes.map(n => ({
+          ...n,
+          tasks: n.tasks.map(t => t.id === editingTask.id ? { ...t, ...payload } as Task : t)
+        })));
+        setEditingTask(null);
+        return;
+      }
+
       const updated = await request<Task>(`/projects/tasks/${editingTask.id}`, { method: 'PUT', body: JSON.stringify(payload) });
       setNodes(nodes.map(n => ({ ...n, tasks: n.tasks.map(t => t.id === updated.id ? { ...t, ...updated } : t) })));
       setEditingTask(null);
@@ -912,6 +923,12 @@ export const WBSPage: React.FC = () => {
     if (!editingTask) return;
     if (!confirm('Delete this task?')) return;
     try {
+      if (!isUuid(editingTask.id)) {
+        setNodes(nodes.map(n => ({ ...n, tasks: n.tasks.filter(t => t.id !== editingTask.id) })));
+        setEditingTask(null);
+        return;
+      }
+
       await request<void>(`/projects/tasks/${editingTask.id}`, { method: 'DELETE' });
       setNodes(nodes.map(n => ({ ...n, tasks: n.tasks.filter(t => t.id !== editingTask.id) })));
       setEditingTask(null);
@@ -967,6 +984,11 @@ export const WBSPage: React.FC = () => {
             if (confirm('Delete this task?')) {
               (async () => {
                 try {
+                  if (!isUuid(task.id)) {
+                    setNodes(nodes.map(n => ({ ...n, tasks: n.tasks.filter(t => t.id !== task.id) })));
+                    return;
+                  }
+
                   await request<void>(`/projects/tasks/${task.id}`, { method: 'DELETE' });
                   setNodes(nodes.map(n => ({ ...n, tasks: n.tasks.filter(t => t.id !== task.id) })));
                 } catch (err) {
