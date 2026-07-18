@@ -10,6 +10,7 @@ import {
   TrendingUp,
   BrainCircuit,
   Settings,
+  Users,
   Sun,
   Moon,
   LogOut,
@@ -131,6 +132,18 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
 
           {/* Settings separate group */}
           <div className="mt-6 pt-4 border-t border-zinc-200 dark:border-zinc-800">
+            <Link
+              to="/user-role-management"
+              title={collapsed ? 'User & Role Management' : undefined}
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-all duration-200 group ${
+                location.pathname === '/user-role-management'
+                  ? 'bg-brand-500/10 text-brand-500 dark:text-brand-100'
+                  : 'text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-900 hover:text-zinc-900 dark:hover:text-zinc-200'
+              }`}
+            >
+              <Users size={18} className={location.pathname === '/user-role-management' ? 'text-brand-500' : 'text-zinc-400 group-hover:text-zinc-600'} />
+              {!collapsed && <span>User & Role Management</span>}
+            </Link>
             <Link
               to="/settings"
               title={collapsed ? 'Billing & Settings' : undefined}

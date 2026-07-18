@@ -6,6 +6,7 @@ import { authRouter } from './controllers/auth.controller';
 import { projectRouter } from './controllers/project.controller';
 import { analyticsRouter } from './controllers/analytics.controller';
 import { enterpriseRouter } from './controllers/enterprise.controller';
+import { userRoleRouter } from './controllers/userRole.controller';
 import { errorHandler } from './middlewares/errorHandler';
 import swaggerUi from 'swagger-ui-express';
 import { pool } from './config/database';
@@ -22,6 +23,7 @@ app.use('/api/auth', authRouter);
 app.use('/api/projects', projectRouter);
 app.use('/api/analytics', analyticsRouter);
 app.use('/api/enterprise', enterpriseRouter);
+app.use('/api/management', userRoleRouter);
 
 
 // Serve uploaded documents statically

@@ -58,3 +58,31 @@ export const taskSchema = z.object({
   weight: z.number().min(0).max(100).default(0),
   status: z.enum(['not_started', 'in_progress', 'completed', 'delayed']).default('not_started'),
 });
+
+export const userCreateSchema = z.object({
+  name: z.string().min(2, 'User name must be at least 2 characters'),
+  email: z.string().email('Invalid email address'),
+  password: z.string().min(6, 'Password must be at least 6 characters'),
+  status: z.enum(['active', 'inactive', 'pending']).default('active'),
+  roleCodes: z.array(z.string().min(2)).optional(),
+});
+
+export const userUpdateSchema = z.object({
+  name: z.string().min(2, 'User name must be at least 2 characters').optional(),
+  email: z.string().email('Invalid email address').optional(),
+  status: z.enum(['active', 'inactive', 'pending']).optional(),
+  roleCodes: z.array(z.string().min(2)).optional(),
+});
+
+export const userPasswordUpdateSchema = z.object({
+  password: z.string().min(6, 'Password must be at least 6 characters'),
+});
+
+export const roleCreateSchema = z.object({
+  name: z.string().min(2, 'Role name must be at least 2 characters'),
+  code: z
+    .string()
+    .min(2, 'Role code must be at least 2 characters')
+    .regex(/^[a-z0-9_]+$/, 'Role code can only contain lowercase letters, numbers, and underscores'),
+  description: z.string().optional(),
+});

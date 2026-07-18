@@ -15,6 +15,7 @@ import {
   ResourcesPage
 } from './pages/EnterprisePages';
 import { DocumentPoolingPage } from './pages/DocumentPoolingPage';
+import { UserRoleManagementPage } from './pages/UserRoleManagementPage';
 
 // Guard wrapper redirecting unauthenticated requests
 const AuthGuard: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -115,6 +116,14 @@ export const App: React.FC = () => {
           element={
             <AuthGuard>
               <SettingsPage />
+            </AuthGuard>
+          }
+        />
+        <Route
+          path="/user-role-management"
+          element={
+            <AuthGuard>
+              <UserRoleManagementPage />
             </AuthGuard>
           }
         />
