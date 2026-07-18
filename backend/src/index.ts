@@ -3,6 +3,9 @@ import cors from 'cors';
 import { config } from './config';
 import { logger } from './utils/logger';
 import { authRouter } from './controllers/auth.controller';
+import { projectRouter } from './controllers/project.controller';
+import { analyticsRouter } from './controllers/analytics.controller';
+import { enterpriseRouter } from './controllers/enterprise.controller';
 import { errorHandler } from './middlewares/errorHandler';
 import swaggerUi from 'swagger-ui-express';
 import { pool } from './config/database';
@@ -16,42 +19,9 @@ app.use(express.json());
 
 // Routes Setup
 app.use('/api/auth', authRouter);
-
-// Load optional routers defensively so auth endpoints remain available
-// even if one module fails at import/runtime in serverless deployment.
-// All routers are loaded defensively (try/catch) so auth endpoints remain
-// available even if one module fails. Previously gated behind ENABLE_OPTIONAL_ROUTERS
-// but this caused /api/projects and other routes to 404 on Vercel.
-
-// Track whether any optional routers were successfully mounted.
-let optionalRoutersEnabled = false;
-
-function mountOptionalRouter(routePath: string, requirePath: string, exportName: string) {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const mod = require(requirePath);
-    const router = mod && mod[exportName];
-    if (!router) throw new Error(`Module ${requirePath} did not export ${exportName}`);
-    app.use(routePath, router);
-    optionalRoutersEnabled = true;
-    logger.info(`Mounted optional router ${routePath} -> ${requirePath}`);
-  } catch (err: any) {
-    // Log full stack trace to make debugging on Vercel easier
-    logger.error(`Failed to load ${requirePath}: ${err?.message || err}`);
-    if (err?.stack) logger.error(err.stack);
-
-    // Mount a fallback router that returns a 503 so frontend receives a clear error
-    const fallback = express.Router();
-    fallback.use((req, res) => {
-      res.status(503).json({ error: `Service unavailable: ${routePath} disabled` });
-    });
-    app.use(routePath, fallback);
-  }
-}
-
-mountOptionalRouter('/api/projects', './controllers/project.controller', 'projectRouter');
-mountOptionalRouter('/api/analytics', './controllers/analytics.controller', 'analyticsRouter');
-mountOptionalRouter('/api/enterprise', './controllers/enterprise.controller', 'enterpriseRouter');
+app.use('/api/projects', projectRouter);
+app.use('/api/analytics', analyticsRouter);
+app.use('/api/enterprise', enterpriseRouter);
 
 
 // Serve uploaded documents statically
@@ -76,7 +46,7 @@ app.get('/health', (_req, res) => {
 });
 
 app.get('/api/health', (_req, res) => {
-  res.json({ status: 'UP', mode: optionalRoutersEnabled ? 'full' : 'auth-only', timestamp: new Date() });
+  res.json({ status: 'UP', mode: 'full', timestamp: new Date() });
 });
 
 // Centralized Error Boundary
