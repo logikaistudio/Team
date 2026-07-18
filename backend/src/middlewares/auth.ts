@@ -9,13 +9,15 @@ import { UserPayload } from '../domain/auth.entity';
  */
 export function authenticate(req: Request, res: Response, next: NextFunction): void {
   const authHeader = req.headers.authorization;
+  const devTenantId = '00000000-0000-4000-8000-000000000001';
+  const devUserId = '00000000-0000-4000-8000-000000000002';
   // Development/testing convenience: accept a mock token or allow unauthenticated requests
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     if (config.nodeEnv === 'development') {
       // Attach a default dev user and tenant for local testing
       const devUser: UserPayload = {
-        id: 'dev-user',
-        tenantId: 'dev-tenant',
+        id: devUserId,
+        tenantId: devTenantId,
         name: 'Developer',
         email: 'developer@local',
         roles: ['super_admin'],
@@ -32,8 +34,8 @@ export function authenticate(req: Request, res: Response, next: NextFunction): v
   // Allow a special mock token for quick local testing
   if (token === 'mock_access_token' && config.nodeEnv === 'development') {
     const devUser: UserPayload = {
-      id: 'dev-user',
-      tenantId: 'dev-tenant',
+      id: devUserId,
+      tenantId: devTenantId,
       name: 'Developer',
       email: 'developer@local',
       roles: ['super_admin'],

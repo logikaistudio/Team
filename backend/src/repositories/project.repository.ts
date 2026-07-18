@@ -3,6 +3,32 @@ import { Project, ProjectMember, WBSNode, Task } from '../domain/project.entity'
 import { pool } from '../config/database';
 
 export class ProjectRepository implements IProjectRepository {
+  async ensureDefaultStatusId(tenantId: string): Promise<string> {
+    // Prefer tenant-specific statuses, fallback to global statuses.
+    const existing = await pool.query(
+      `SELECT id
+       FROM project_statuses
+       WHERE tenant_id = $1 OR tenant_id IS NULL
+       ORDER BY (tenant_id IS NULL) ASC, created_at ASC
+       LIMIT 1`,
+      [tenantId]
+    );
+
+    if (existing.rows.length > 0) {
+      return existing.rows[0].id;
+    }
+
+    // If none exist, create a default tenant status.
+    const created = await pool.query(
+      `INSERT INTO project_statuses (tenant_id, name, color_code, is_terminal)
+       VALUES ($1, 'Planning', '#3B82F6', FALSE)
+       RETURNING id`,
+      [tenantId]
+    );
+
+    return created.rows[0].id;
+  }
+
   async create(tenantId: string, project: Partial<Project>): Promise<Project> {
     const query = `
       INSERT INTO projects (tenant_id, name, code, description, status_id, start_date, end_date, budget, currency, location)

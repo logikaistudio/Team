@@ -19,7 +19,22 @@ projectRouter.use('/:projectId/documents', documentRouter);
 projectRouter.post('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const tenantId = req.tenantId!;
-    const check = projectSchema.safeParse(req.body);
+    const now = new Date();
+    const defaultStartDate = now.toISOString().slice(0, 10);
+    const defaultEnd = new Date(now);
+    defaultEnd.setDate(defaultEnd.getDate() + 30);
+    const defaultEndDate = defaultEnd.toISOString().slice(0, 10);
+
+    const statusId = req.body?.statusId || (await projectRepository.ensureDefaultStatusId(tenantId));
+
+    const payload = {
+      ...req.body,
+      statusId,
+      startDate: req.body?.startDate || defaultStartDate,
+      endDate: req.body?.endDate || defaultEndDate,
+    };
+
+    const check = projectSchema.safeParse(payload);
     if (!check.success) {
       throw new BadRequestError(check.error.errors.map((e) => e.message).join(', '));
     }
