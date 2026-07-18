@@ -80,7 +80,7 @@ projectRouter.put('/:id', async (req: Request, res: Response, next: NextFunction
     if (!isUuid(id)) {
       return res.status(400).json({ message: 'Invalid project id format' });
     }
-    const check = projectSchema.safeParse(req.body);
+    const check = projectSchema.partial().safeParse(req.body);
     if (!check.success) {
       throw new BadRequestError(check.error.errors.map((e) => e.message).join(', '));
     }
