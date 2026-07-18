@@ -3,19 +3,64 @@ import { Project, ProjectMember, WBSNode, Task } from '../domain/project.entity'
 import { pool } from '../config/database';
 
 export class ProjectRepository implements IProjectRepository {
+  private async ensureProjectStatusesTable(): Promise<void> {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS project_statuses (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
+        name VARCHAR(50) NOT NULL,
+        color_code VARCHAR(10) NOT NULL DEFAULT '#CCCCCC',
+        is_terminal BOOLEAN DEFAULT FALSE,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(tenant_id, name)
+      )
+    `);
+
+    await pool.query(`
+      INSERT INTO project_statuses (tenant_id, name, color_code, is_terminal)
+      VALUES
+        (NULL, 'Not Started', '#9CA3AF', false),
+        (NULL, 'Planning', '#3B82F6', false),
+        (NULL, 'In Progress', '#10B981', false),
+        (NULL, 'On Hold', '#F59E0B', false),
+        (NULL, 'Completed', '#6366F1', true),
+        (NULL, 'Cancelled', '#EF4444', true)
+      ON CONFLICT (tenant_id, name) DO NOTHING
+    `);
+  }
+
   async ensureDefaultStatusId(tenantId: string): Promise<string> {
     // Prefer tenant-specific statuses, fallback to global statuses.
-    const existing = await pool.query(
-      `SELECT id
-       FROM project_statuses
-       WHERE tenant_id = $1 OR tenant_id IS NULL
-       ORDER BY (tenant_id IS NULL) ASC, created_at ASC
-       LIMIT 1`,
-      [tenantId]
-    );
+    try {
+      const existing = await pool.query(
+        `SELECT id
+         FROM project_statuses
+         WHERE tenant_id = $1 OR tenant_id IS NULL
+         ORDER BY (tenant_id IS NULL) ASC, created_at ASC
+         LIMIT 1`,
+        [tenantId]
+      );
 
-    if (existing.rows.length > 0) {
-      return existing.rows[0].id;
+      if (existing.rows.length > 0) {
+        return existing.rows[0].id;
+      }
+    } catch (error: any) {
+      // If the table is missing in production, self-heal it once and retry.
+      if (error?.code !== '42P01') {
+        throw error;
+      }
+      await this.ensureProjectStatusesTable();
+      const existingAfterHeal = await pool.query(
+        `SELECT id
+         FROM project_statuses
+         WHERE tenant_id = $1 OR tenant_id IS NULL
+         ORDER BY (tenant_id IS NULL) ASC, created_at ASC
+         LIMIT 1`,
+        [tenantId]
+      );
+      if (existingAfterHeal.rows.length > 0) {
+        return existingAfterHeal.rows[0].id;
+      }
     }
 
     // If none exist, create a default tenant status.
