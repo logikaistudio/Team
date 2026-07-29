@@ -10,7 +10,13 @@ export const documentRouter = Router({ mergeParams: true });
 const documentRepository = new DocumentRepository();
 
 const isVercelRuntime = process.env.VERCEL === '1' || process.env.VERCEL === 'true';
-const upload = multer({ storage: multer.memoryStorage() });
+const MAX_UPLOAD_SIZE_BYTES = 4 * 1024 * 1024;
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: MAX_UPLOAD_SIZE_BYTES,
+  },
+});
 
 documentRouter.use(authenticate);
 

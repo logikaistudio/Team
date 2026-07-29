@@ -10,7 +10,8 @@ export function errorHandler(
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   next: NextFunction
 ): void {
-  const statusCode = err instanceof HttpError ? err.statusCode : 500;
+  const isPayloadTooLarge = err.name === 'MulterError' || /payload too large|file too large|request entity too large/i.test(err.message || '');
+  const statusCode = err instanceof HttpError ? err.statusCode : isPayloadTooLarge ? 413 : 500;
   const message = err.message || 'Internal Server Error';
 
   logger.error('Error handled by middleware', {

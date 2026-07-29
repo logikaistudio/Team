@@ -26,6 +26,7 @@ interface DocumentFolder {
 }
 
 export const DocumentPoolingPage: React.FC = () => {
+  const MAX_UPLOAD_SIZE_BYTES = 4 * 1024 * 1024; // Keep under Vercel function payload limit
   const [documents, setDocuments] = useState<ProjectDocument[]>([]);
   const [folders, setFolders] = useState<DocumentFolder[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -100,6 +101,14 @@ export const DocumentPoolingPage: React.FC = () => {
     const file = event.target.files?.[0];
     if (!file || !selectedProjectId) return;
 
+    if (file.size > MAX_UPLOAD_SIZE_BYTES) {
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+      alert('Ukuran file terlalu besar. Maksimal 4 MB per file untuk upload web saat ini.');
+      return;
+    }
+
     setUploading(true);
     const formData = new FormData();
     formData.append('file', file);
@@ -118,7 +127,10 @@ export const DocumentPoolingPage: React.FC = () => {
       }
     } catch (error) {
       console.error('Failed to upload document', error);
-      const message = error instanceof Error ? error.message : 'Unknown upload error';
+      const rawMessage = error instanceof Error ? error.message : 'Unknown upload error';
+      const message = /FUNCTION_PAYLOAD_TOO_LARGE|Request Entity Too Large|File too large/i.test(rawMessage)
+        ? 'Ukuran file terlalu besar. Maksimal 4 MB per file.'
+        : rawMessage;
       alert(`Upload gagal: ${message}`);
     } finally {
       setUploading(false);
@@ -270,6 +282,8 @@ export const DocumentPoolingPage: React.FC = () => {
           </button>
         </div>
       </div>
+
+      <p className="text-xs text-zinc-500 -mt-3">Batas upload web saat ini: maksimal 4 MB per file.</p>
 
       {/* Document Table */}
       <div className="bg-white dark:bg-[#0c0c0e] border border-zinc-200 dark:border-zinc-800 rounded-xl overflow-hidden">
