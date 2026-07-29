@@ -910,6 +910,7 @@ export const WBSPage: React.FC = () => {
         plannedEnd: newTask.isMilestone ? newTask.start : newTask.end,
         plannedCost: Number(newTask.cost) || 0,
         weight: 0,
+        dependencies: deps.length > 0 ? deps : undefined,
         status: newTask.status,
       };
 
@@ -1145,6 +1146,20 @@ export const WBSPage: React.FC = () => {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Work Breakdown Structure (WBS)</h1>
           <p className="text-zinc-500 text-sm">Organize scopes, view dependency networks, and track milestones.</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <label className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Project</label>
+          <select
+            value={selectedProjectId || ''}
+            onChange={(e) => setSelectedProjectId(e.target.value || null)}
+            className="min-w-[220px] bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-500"
+          >
+            {projects.map((project) => (
+              <option key={project.id} value={project.id}>
+                {project.name}
+              </option>
+            ))}
+          </select>
         </div>
         <div className="flex gap-2">
           <button 

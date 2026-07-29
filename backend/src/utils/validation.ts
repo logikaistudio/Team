@@ -56,6 +56,15 @@ export const taskSchema = z.object({
   durationDays: z.number().int().positive().optional(),
   plannedCost: z.number().nonnegative().default(0),
   weight: z.number().min(0).max(100).default(0),
+  resources: z.array(z.string()).optional(),
+  dependencies: z
+    .array(
+      z.object({
+        taskId: z.string().uuid(),
+        type: z.enum(['FS', 'SS', 'FF', 'SF']),
+      })
+    )
+    .optional(),
   status: z.enum(['not_started', 'in_progress', 'completed', 'delayed']).default('not_started'),
 });
 

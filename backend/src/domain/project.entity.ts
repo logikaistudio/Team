@@ -64,7 +64,14 @@ export interface Task {
   progressPercent: number;
   plannedCost: number;
   weight: number;
+  resources?: string[];
+  dependencies?: TaskDependency[];
   status: 'not_started' | 'in_progress' | 'completed' | 'delayed';
   createdAt?: Date;
   updatedAt?: Date;
+}
+
+export interface TaskDependency {
+  taskId: string;
+  type: 'FS' | 'SS' | 'FF' | 'SF';
 }

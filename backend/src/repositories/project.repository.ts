@@ -3,6 +3,16 @@ import { Project, ProjectMember, WBSNode, Task } from '../domain/project.entity'
 import { pool } from '../config/database';
 
 export class ProjectRepository implements IProjectRepository {
+  private async ensureProjectBaseline(tenantId: string, projectId: string): Promise<void> {
+    await this.ensureDefaultScheduleId(tenantId, projectId);
+    await pool.query(
+      `INSERT INTO wbs (tenant_id, project_id, parent_id, code, name, description, weight)
+       VALUES ($1, $2, NULL, '1.0', 'Baseline Work Breakdown', 'Root baseline node for project setup', 100.00)
+       ON CONFLICT (project_id, code) DO NOTHING`,
+      [tenantId, projectId]
+    );
+  }
+
   private async ensureProjectStatusesTable(): Promise<void> {
     await pool.query(`
       CREATE TABLE IF NOT EXISTS project_statuses (
@@ -252,6 +262,7 @@ export class ProjectRepository implements IProjectRepository {
   }
 
   async getWBSNodes(tenantId: string, projectId: string): Promise<WBSNode[]> {
+    await this.ensureProjectBaseline(tenantId, projectId);
     const query = `
       SELECT id, tenant_id AS "tenantId", project_id AS "projectId", parent_id AS "parentId",
              code, name, description, weight, 0.00::numeric AS "progressPercent", created_at AS "createdAt", updated_at AS "updatedAt"
@@ -322,42 +333,80 @@ export class ProjectRepository implements IProjectRepository {
   }
 
   async createTask(tenantId: string, task: Partial<Task>): Promise<Task> {
-    const query = `
-      INSERT INTO tasks (tenant_id, project_id, wbs_id, schedule_id, name, description, planned_start, planned_end, duration_days, planned_cost, weight, progress_percent, status)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-      RETURNING id, tenant_id AS "tenantId", project_id AS "projectId", wbs_id AS "wbsId", schedule_id AS "scheduleId",
-                name, description, planned_start AS "plannedStart", planned_end AS "plannedEnd", actual_start AS "actualStart",
-                actual_end AS "actualEnd", duration_days AS "durationDays", progress_percent AS "progressPercent",
-                planned_cost AS "plannedCost", weight, status, created_at AS "createdAt", updated_at AS "updatedAt"
-    `;
-    const values = [
-      tenantId,
-      task.projectId,
-      task.wbsId,
-      task.scheduleId,
-      task.name,
-      task.description,
-      task.plannedStart,
-      task.plannedEnd,
-      task.durationDays || 0,
-      task.plannedCost || 0.00,
-      task.weight || 0.00,
-      task.progressPercent || 0.00,
-      task.status || 'not_started',
-    ];
-    const { rows } = await pool.query(query, values);
-    return rows[0];
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      const query = `
+        INSERT INTO tasks (tenant_id, project_id, wbs_id, schedule_id, name, description, planned_start, planned_end, duration_days, planned_cost, weight, progress_percent, status)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+        RETURNING id
+      `;
+      const values = [
+        tenantId,
+        task.projectId,
+        task.wbsId,
+        task.scheduleId,
+        task.name,
+        task.description,
+        task.plannedStart,
+        task.plannedEnd,
+        task.durationDays || 0,
+        task.plannedCost || 0.00,
+        task.weight || 0.00,
+        task.progressPercent || 0.00,
+        task.status || 'not_started',
+      ];
+      const { rows } = await client.query(query, values);
+      const createdTaskId = rows[0].id as string;
+
+      if (task.dependencies && task.dependencies.length > 0) {
+        for (const dep of task.dependencies) {
+          await client.query(
+            `INSERT INTO task_dependencies (predecessor_id, successor_id, dependency_type)
+             SELECT t.id, $2, $3
+             FROM tasks t
+             WHERE t.id = $1 AND t.tenant_id = $4 AND t.project_id = $5`,
+            [dep.taskId, createdTaskId, dep.type, tenantId, task.projectId]
+          );
+        }
+      }
+
+      await client.query('COMMIT');
+      const created = await this.findTaskById(tenantId, createdTaskId);
+      if (!created) {
+        throw new Error('Task created but could not be reloaded');
+      }
+      return created;
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   async getTasks(tenantId: string, projectId: string): Promise<Task[]> {
+    await this.ensureProjectBaseline(tenantId, projectId);
     const query = `
-      SELECT id, tenant_id AS "tenantId", project_id AS "projectId", wbs_id AS "wbsId", schedule_id AS "scheduleId",
+      SELECT t.id, t.tenant_id AS "tenantId", t.project_id AS "projectId", t.wbs_id AS "wbsId", t.schedule_id AS "scheduleId",
              name, description, planned_start AS "plannedStart", planned_end AS "plannedEnd", actual_start AS "actualStart",
              actual_end AS "actualEnd", duration_days AS "durationDays", progress_percent AS "progressPercent",
-             planned_cost AS "plannedCost", weight, status, created_at AS "createdAt", updated_at AS "updatedAt"
-      FROM tasks
-      WHERE tenant_id = $1 AND project_id = $2
-      ORDER BY planned_start ASC
+             planned_cost AS "plannedCost", weight, status, created_at AS "createdAt", updated_at AS "updatedAt",
+             COALESCE(
+              (
+                SELECT json_agg(
+                  json_build_object('taskId', td.predecessor_id::text, 'type', td.dependency_type)
+                  ORDER BY td.created_at ASC
+                )
+                FROM task_dependencies td
+                WHERE td.successor_id = t.id
+              ),
+              '[]'::json
+             ) AS dependencies
+      FROM tasks t
+      WHERE t.tenant_id = $1 AND t.project_id = $2
+      ORDER BY t.planned_start ASC
     `;
     const { rows } = await pool.query(query, [tenantId, projectId]);
     return rows;
@@ -365,54 +414,96 @@ export class ProjectRepository implements IProjectRepository {
 
   async findTaskById(tenantId: string, id: string): Promise<Task | null> {
     const query = `
-      SELECT id, tenant_id AS "tenantId", project_id AS "projectId", wbs_id AS "wbsId", schedule_id AS "scheduleId",
+      SELECT t.id, t.tenant_id AS "tenantId", t.project_id AS "projectId", t.wbs_id AS "wbsId", t.schedule_id AS "scheduleId",
              name, description, planned_start AS "plannedStart", planned_end AS "plannedEnd", actual_start AS "actualStart",
              actual_end AS "actualEnd", duration_days AS "durationDays", progress_percent AS "progressPercent",
-             planned_cost AS "plannedCost", weight, status, created_at AS "createdAt", updated_at AS "updatedAt"
-      FROM tasks
-      WHERE tenant_id = $1 AND id = $2
+             planned_cost AS "plannedCost", weight, status, created_at AS "createdAt", updated_at AS "updatedAt",
+             COALESCE(
+              (
+                SELECT json_agg(
+                  json_build_object('taskId', td.predecessor_id::text, 'type', td.dependency_type)
+                  ORDER BY td.created_at ASC
+                )
+                FROM task_dependencies td
+                WHERE td.successor_id = t.id
+              ),
+              '[]'::json
+             ) AS dependencies
+      FROM tasks t
+      WHERE t.tenant_id = $1 AND t.id = $2
     `;
     const { rows } = await pool.query(query, [tenantId, id]);
     return rows.length ? rows[0] : null;
   }
 
   async updateTask(tenantId: string, id: string, task: Partial<Task>): Promise<Task> {
-    const query = `
-      UPDATE tasks
-      SET name = COALESCE($1, name),
-          description = COALESCE($2, description),
-          planned_start = COALESCE($3, planned_start),
-          planned_end = COALESCE($4, planned_end),
-          actual_start = COALESCE($5, actual_start),
-          actual_end = COALESCE($6, actual_end),
-          duration_days = COALESCE($7, duration_days),
-          progress_percent = COALESCE($8, progress_percent),
-          planned_cost = COALESCE($9, planned_cost),
-          weight = COALESCE($10, weight),
-          status = COALESCE($11, status)
-      WHERE tenant_id = $12 AND id = $13
-      RETURNING id, tenant_id AS "tenantId", project_id AS "projectId", wbs_id AS "wbsId", schedule_id AS "scheduleId",
-                name, description, planned_start AS "plannedStart", planned_end AS "plannedEnd", actual_start AS "actualStart",
-                actual_end AS "actualEnd", duration_days AS "durationDays", progress_percent AS "progressPercent",
-                planned_cost AS "plannedCost", weight, status, created_at AS "createdAt", updated_at AS "updatedAt"
-    `;
-    const values = [
-      task.name,
-      task.description,
-      task.plannedStart,
-      task.plannedEnd,
-      task.actualStart,
-      task.actualEnd,
-      task.durationDays,
-      task.progressPercent,
-      task.plannedCost,
-      task.weight,
-      task.status,
-      tenantId,
-      id,
-    ];
-    const { rows } = await pool.query(query, values);
-    return rows[0];
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      const query = `
+        UPDATE tasks
+        SET name = COALESCE($1, name),
+            description = COALESCE($2, description),
+            planned_start = COALESCE($3, planned_start),
+            planned_end = COALESCE($4, planned_end),
+            actual_start = COALESCE($5, actual_start),
+            actual_end = COALESCE($6, actual_end),
+            duration_days = COALESCE($7, duration_days),
+            progress_percent = COALESCE($8, progress_percent),
+            planned_cost = COALESCE($9, planned_cost),
+            weight = COALESCE($10, weight),
+            status = COALESCE($11, status)
+        WHERE tenant_id = $12 AND id = $13
+        RETURNING id, project_id AS "projectId"
+      `;
+      const values = [
+        task.name,
+        task.description,
+        task.plannedStart,
+        task.plannedEnd,
+        task.actualStart,
+        task.actualEnd,
+        task.durationDays,
+        task.progressPercent,
+        task.plannedCost,
+        task.weight,
+        task.status,
+        tenantId,
+        id,
+      ];
+      const { rows } = await client.query(query, values);
+      if (!rows.length) {
+        throw new Error('Task not found');
+      }
+
+      const projectId = rows[0].projectId as string;
+
+      if (task.dependencies) {
+        await client.query(`DELETE FROM task_dependencies WHERE successor_id = $1`, [id]);
+        for (const dep of task.dependencies) {
+          await client.query(
+            `INSERT INTO task_dependencies (predecessor_id, successor_id, dependency_type)
+             SELECT t.id, $2, $3
+             FROM tasks t
+             WHERE t.id = $1 AND t.tenant_id = $4 AND t.project_id = $5`,
+            [dep.taskId, id, dep.type, tenantId, projectId]
+          );
+        }
+      }
+
+      await client.query('COMMIT');
+      const updated = await this.findTaskById(tenantId, id);
+      if (!updated) {
+        throw new Error('Task updated but could not be reloaded');
+      }
+      return updated;
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   async deleteTask(tenantId: string, id: string): Promise<boolean> {
