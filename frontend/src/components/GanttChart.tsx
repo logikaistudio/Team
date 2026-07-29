@@ -218,13 +218,38 @@ export const GanttChart: React.FC<GanttChartProps> = ({ nodes, expandedNodes, ex
     return weekNo;
   }
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'completed': return 'bg-green-500';
-      case 'in_progress': return 'bg-brand-500';
-      case 'delayed': return 'bg-red-500';
-      default: return 'bg-zinc-400';
-    }
+  const statusPalette = {
+    completed: {
+      bar: 'linear-gradient(90deg, #10b981, #34d399)',
+      border: '#059669',
+      progressMask: 'rgba(236, 253, 245, 0.28)',
+    },
+    in_progress: {
+      bar: 'linear-gradient(90deg, #3b82f6, #6366f1)',
+      border: '#2563eb',
+      progressMask: 'rgba(224, 231, 255, 0.26)',
+    },
+    delayed: {
+      bar: 'linear-gradient(90deg, #ef4444, #f97316)',
+      border: '#dc2626',
+      progressMask: 'rgba(254, 226, 226, 0.26)',
+    },
+    not_started: {
+      bar: 'linear-gradient(90deg, #64748b, #94a3b8)',
+      border: '#475569',
+      progressMask: 'rgba(241, 245, 249, 0.18)',
+    },
+    group: {
+      bar: 'linear-gradient(90deg, #334155, #475569)',
+      border: '#1e293b',
+      progressMask: 'rgba(226, 232, 240, 0.2)',
+    },
+  } as const;
+
+  const milestonePalette = {
+    fill: '#f59e0b',
+    border: '#b45309',
+    glow: '0 0 0 2px rgba(251, 191, 36, 0.25), 0 3px 10px rgba(0,0,0,0.20)',
   };
 
   const isStartOfWeek = (date: Date) => {
@@ -361,11 +386,22 @@ export const GanttChart: React.FC<GanttChartProps> = ({ nodes, expandedNodes, ex
                 if (dragStateRef.current?.hasMoved) return;
                 onTaskClick?.(task);
               }}
-              className="absolute w-4 h-4 bg-yellow-500 transform rotate-45 shadow-sm border border-yellow-600 z-10 cursor-pointer"
-              style={{ left: `${pos.leftX - 8}px` }} // center diamond
+              className="absolute w-4 h-4 transform rotate-45 z-10 cursor-pointer"
+              style={{
+                left: `${pos.leftX - 8}px`,
+                background: milestonePalette.fill,
+                border: `1px solid ${milestonePalette.border}`,
+                boxShadow: milestonePalette.glow,
+              }} // center diamond
             />
           ) : (
             // Standard Task Bar
+            (() => {
+              const palette = (task.subtasks && task.subtasks.length > 0)
+                ? statusPalette.group
+                : statusPalette[task.status as keyof typeof statusPalette] || statusPalette.not_started;
+
+              return (
             <div
               onMouseDown={(e) => {
                 e.preventDefault();
@@ -386,16 +422,30 @@ export const GanttChart: React.FC<GanttChartProps> = ({ nodes, expandedNodes, ex
                 onTaskClick?.(task);
               }}
               className={clsx(
-                "absolute h-6 rounded-md shadow-sm border border-black/10 dark:border-white/10 z-10 cursor-grab active:cursor-grabbing",
-                task.subtasks && task.subtasks.length > 0 ? "bg-zinc-600 dark:bg-zinc-400" : getStatusColor(task.status)
+                "absolute h-6 rounded-md shadow-sm z-10 cursor-grab active:cursor-grabbing"
               )}
-              style={{ left: `${pos.leftX}px`, width: `${pos.rightX - pos.leftX}px` }}
+              style={{
+                left: `${pos.leftX}px`,
+                width: `${pos.rightX - pos.leftX}px`,
+                background: palette.bar,
+                border: `1px solid ${palette.border}`,
+                boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.22), 0 2px 5px rgba(15,23,42,0.18)',
+              }}
             >
                {/* Progress bar overlay for standard leaf tasks */}
                {(!task.subtasks || task.subtasks.length === 0) && (
-                 <div className="absolute inset-0 bg-white/20 dark:bg-black/20 rounded-md" style={{ width: `${100 - task.progress}%`, right: 0, left: 'auto' }} />
+                 <div
+                   className="absolute inset-y-0 right-0 rounded-r-md"
+                   style={{
+                     width: `${Math.max(0, 100 - Math.min(100, Math.max(0, Number(task.progress) || 0)))}%`,
+                     background: palette.progressMask,
+                     backdropFilter: 'saturate(0.7)',
+                   }}
+                 />
                )}
             </div>
+              );
+            })()
           )}
         </div>
       );
@@ -487,7 +537,7 @@ export const GanttChart: React.FC<GanttChartProps> = ({ nodes, expandedNodes, ex
             return (
               <React.Fragment key={`gantt-node-${node.id}`}>
                 {/* Node Row Header */}
-                <div className="h-[40px] border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/10 flex items-center relative" />
+                <div className="h-[40px] border-b border-zinc-200 dark:border-zinc-800 bg-gradient-to-r from-sky-50/70 via-indigo-50/50 to-cyan-50/70 dark:from-sky-950/25 dark:via-indigo-950/20 dark:to-cyan-950/25 flex items-center relative" />
 
                 {/* Task Rows */}
                 {isExpanded && renderGanttRows(node.tasks)}

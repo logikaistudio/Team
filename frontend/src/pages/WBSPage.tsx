@@ -9,6 +9,19 @@ const initialData: WBSNode[] = [];
 const isUuid = (value: string): boolean =>
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 
+const toDateInputValue = (value: unknown): string => {
+  if (!value) return '';
+  if (typeof value === 'string') {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? '' : parsed.toISOString().split('T')[0];
+  }
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? '' : value.toISOString().split('T')[0];
+  }
+  return '';
+};
+
 export const WBSPage: React.FC = () => {
   const [nodes, setNodes] = useState<WBSNode[]>(initialData);
   const [projects, setProjects] = useState<{ id: string; name: string; startDate?: Date; endDate?: Date; progressPercent?: number; budget?: number; currency?: string }[]>([]);
@@ -52,23 +65,28 @@ export const WBSPage: React.FC = () => {
      name: string; start: string; end: string; cost: number; progress: number; status: Task['status']; resources: string; dependencies: Dependency[];
   } | null>(null);
 
-  const normalizeTask = (task: any): Task => ({
-    id: task.id,
-    projectId: task.projectId,
-    wbsId: task.wbsId,
-    name: task.name,
-    description: task.description,
-    start: task.plannedStart || task.start,
-    end: task.plannedEnd || task.end,
-    cost: task.plannedCost ?? task.cost ?? 0,
-    progress: task.progressPercent ?? task.progress ?? 0,
-    status: task.status,
-    resources: task.resources,
-    isMilestone: task.isMilestone,
-    dependencies: task.dependencies,
-    subtasks: task.subtasks,
-    parentId: task.parentId,
-  });
+  const normalizeTask = (task: any): Task => {
+    const plannedStartRaw = task.plannedStart ?? task.planned_start ?? task.start;
+    const plannedEndRaw = task.plannedEnd ?? task.planned_end ?? task.end ?? plannedStartRaw;
+
+    return {
+      id: task.id,
+      projectId: task.projectId,
+      wbsId: task.wbsId,
+      name: task.name,
+      description: task.description,
+      start: toDateInputValue(plannedStartRaw),
+      end: toDateInputValue(plannedEndRaw),
+      cost: task.plannedCost ?? task.planned_cost ?? task.cost ?? 0,
+      progress: task.progressPercent ?? task.progress_percent ?? task.progress ?? 0,
+      status: task.status,
+      resources: task.resources,
+      isMilestone: task.isMilestone,
+      dependencies: task.dependencies,
+      subtasks: task.subtasks,
+      parentId: task.parentId,
+    };
+  };
   const handleLeftScroll = (e: React.UIEvent<HTMLDivElement>) => {
     if (rightPaneRef.current && rightPaneRef.current.scrollTop !== e.currentTarget.scrollTop) {
       rightPaneRef.current.scrollTop = e.currentTarget.scrollTop;
@@ -85,8 +103,8 @@ export const WBSPage: React.FC = () => {
     if (editingTask) {
       setEditTaskForm({
         name: editingTask.name,
-        start: editingTask.start,
-        end: editingTask.end,
+        start: toDateInputValue(editingTask.start),
+        end: toDateInputValue(editingTask.end || editingTask.start),
         cost: editingTask.cost,
         progress: editingTask.progress,
         status: editingTask.status,
@@ -235,6 +253,19 @@ export const WBSPage: React.FC = () => {
     end.setDate(end.getDate() + 6);
     end.setHours(23, 59, 59, 999);
     return end;
+  };
+
+  const openTaskDetails = (task: Task) => {
+    const hasSubtasks = task.subtasks && task.subtasks.length > 0;
+    const childDates = hasSubtasks ? getChildTasksDateRange(task) : { start: null, end: null };
+    const resolvedStart = toDateInputValue(childDates.start || task.start);
+    const resolvedEnd = toDateInputValue(childDates.end || task.end || resolvedStart);
+
+    setEditingTask({
+      ...task,
+      start: resolvedStart,
+      end: task.isMilestone ? resolvedStart : resolvedEnd,
+    });
   };
 
   const exportToExcel = () => {
@@ -1118,7 +1149,7 @@ export const WBSPage: React.FC = () => {
               })();
             }
           }}
-          onClick={() => setEditingTask(task)}
+          onClick={() => openTaskDetails(task)}
           className="cursor-pointer h-[32px] px-4 border-b border-zinc-200 dark:border-zinc-800 flex items-center gap-4 hover:bg-brand-50 dark:hover:bg-brand-900/10 transition-colors group relative overflow-hidden"
         >
           <div className="flex-1 min-w-0 flex items-center h-full">
@@ -1395,7 +1426,7 @@ export const WBSPage: React.FC = () => {
           nodes={nodes} 
           expandedNodes={expandedNodes} 
           expandedTasks={expandedTasks} 
-          onTaskClick={setEditingTask} 
+          onTaskClick={openTaskDetails} 
           onTaskDateChange={handleTaskDateChangeFromCalendar}
           scrollRef={rightPaneRef}
           onScroll={handleRightScroll}
