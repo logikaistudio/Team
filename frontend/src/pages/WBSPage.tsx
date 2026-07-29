@@ -30,10 +30,16 @@ export const WBSPage: React.FC = () => {
   // Edit State
   const [editingTask, setEditingTask] = useState<Task | null>(null);
 
+  // Dependency picker state
+  const [newDep, setNewDep] = useState<{ taskId: string; type: Dependency['type'] }>({ taskId: '', type: 'FS' });
+
   // WBS Settings state
   const [rescheduleMode, setRescheduleMode] = useState<'start' | 'end' | 'duration'>('start');
   const [newProjectStart, setNewProjectStart] = useState<string>('');
   const [newProjectEnd, setNewProjectEnd] = useState<string>('');
+
+  const leftPaneRef = React.useRef<HTMLDivElement>(null);
+  const rightPaneRef = React.useRef<HTMLDivElement>(null);
 
   // Form state
   const [newNode, setNewNode] = useState({ code: '', name: '', weight: 0 });
@@ -46,12 +52,23 @@ export const WBSPage: React.FC = () => {
      name: string; start: string; end: string; cost: number; progress: number; status: Task['status']; resources: string; dependencies: Dependency[];
   } | null>(null);
 
-  const [newDep, setNewDep] = useState({ taskId: '', type: 'FS' as Dependency['type'] });
-
-  // Scroll synchronization refs
-  const leftPaneRef = React.useRef<HTMLDivElement>(null);
-  const rightPaneRef = React.useRef<HTMLDivElement>(null);
-
+  const normalizeTask = (task: any): Task => ({
+    id: task.id,
+    projectId: task.projectId,
+    wbsId: task.wbsId,
+    name: task.name,
+    description: task.description,
+    start: task.plannedStart || task.start,
+    end: task.plannedEnd || task.end,
+    cost: task.plannedCost ?? task.cost ?? 0,
+    progress: task.progressPercent ?? task.progress ?? 0,
+    status: task.status,
+    resources: task.resources,
+    isMilestone: task.isMilestone,
+    dependencies: task.dependencies,
+    subtasks: task.subtasks,
+    parentId: task.parentId,
+  });
   const handleLeftScroll = (e: React.UIEvent<HTMLDivElement>) => {
     if (rightPaneRef.current && rightPaneRef.current.scrollTop !== e.currentTarget.scrollTop) {
       rightPaneRef.current.scrollTop = e.currentTarget.scrollTop;
@@ -111,15 +128,27 @@ export const WBSPage: React.FC = () => {
     }
     const loadWBS = async () => {
       try {
-        const data = await request<WBSNode[]>(`/projects/${selectedProjectId}/wbs`);
-        if (data && data.length) {
-          // Map returned WBS nodes into expected shape
-          setNodes(data.map(n => ({ ...n, tasks: [] })));
-        } else {
-          setNodes([]);
-        }
+        const [wbsData, tasksData] = await Promise.all([
+          request<any[]>(`/projects/${selectedProjectId}/wbs`),
+          request<any[]>(`/projects/${selectedProjectId}/tasks`),
+        ]);
+
+        const normalizedTasks = tasksData.map(normalizeTask);
+        const tasksByNode = normalizedTasks.reduce<Record<string, Task[]>>((acc, task) => {
+          if (task.wbsId) {
+            acc[task.wbsId] = acc[task.wbsId] || [];
+            acc[task.wbsId].push(task);
+          }
+          return acc;
+        }, {});
+
+        setNodes(wbsData.map((node) => ({
+          ...node,
+          tasks: tasksByNode[node.id] || [],
+        })));
       } catch (err) {
         console.error('Failed to load WBS', err);
+        setNodes([]);
       }
     };
     loadWBS();
@@ -861,28 +890,46 @@ export const WBSPage: React.FC = () => {
     })();
   };
 
-  const handleAddTask = (e: React.FormEvent) => {
+  const handleAddTask = async (e: React.FormEvent) => {
     e.preventDefault();
-    const deps: Dependency[] = [];
-    if (newTask.depTaskId) {
-      deps.push({ taskId: newTask.depTaskId, type: newTask.depType });
-    }
-    const taskObj: Task = {
-      id: `t${Date.now()}`,
-      name: newTask.name,
-      start: newTask.start,
-      end: newTask.isMilestone ? newTask.start : newTask.end,
-      cost: Number(newTask.cost),
-      progress: 0,
-      status: newTask.status,
-      resources: newTask.resources.split(',').map(r => r.trim()).filter(r => r),
-      isMilestone: newTask.isMilestone,
-      dependencies: deps.length > 0 ? deps : undefined
-    };
+    try {
+      if (!selectedProjectId) throw new Error('No project selected');
+      if (!newTask.nodeId) throw new Error('No WBS node selected');
 
-    setNodes(nodes.map(n => n.id === newTask.nodeId ? { ...n, tasks: [...n.tasks, taskObj] } : n));
-    setTaskModalOpen(false);
-    setNewTask({ nodeId: '', name: '', start: '', end: '', cost: 0, status: 'not_started', resources: '', isMilestone: false, depTaskId: '', depType: 'FS' });
+      const deps: Dependency[] = [];
+      if (newTask.depTaskId) {
+        deps.push({ taskId: newTask.depTaskId, type: newTask.depType });
+      }
+
+      const payload = {
+        projectId: selectedProjectId,
+        wbsId: newTask.nodeId,
+        name: newTask.name,
+        description: undefined,
+        plannedStart: newTask.start,
+        plannedEnd: newTask.isMilestone ? newTask.start : newTask.end,
+        plannedCost: Number(newTask.cost) || 0,
+        weight: 0,
+        status: newTask.status,
+      };
+
+      const created = await request<any>('/projects/tasks', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+      const task = normalizeTask(created);
+
+      setNodes((prev) => prev.map((n) =>
+        n.id === task.wbsId
+          ? { ...n, tasks: [...n.tasks, task] }
+          : n
+      ));
+      setTaskModalOpen(false);
+      setNewTask({ nodeId: '', name: '', start: '', end: '', cost: 0, status: 'not_started', resources: '', isMilestone: false, depTaskId: '', depType: 'FS' });
+    } catch (err) {
+      console.error('Create task failed', err);
+      alert('Failed to create task');
+    }
   };
 
   const handleUpdateTask = async (e: React.FormEvent) => {

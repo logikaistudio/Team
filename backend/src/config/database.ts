@@ -4,6 +4,32 @@ import { logger } from '../utils/logger';
 
 const isProduction = process.env.NODE_ENV === 'production';
 
+function cleanEnv(value?: string): string {
+  return (value || '').trim().replace(/^['\"]|['\"]$/g, '');
+}
+
+function isValidPgConnectionString(value: string): boolean {
+  if (/\s/.test(value)) {
+    return false;
+  }
+
+  try {
+    const parsed = new URL(value);
+    return (
+      (parsed.protocol === 'postgres:' || parsed.protocol === 'postgresql:') &&
+      Boolean(parsed.hostname) &&
+      !parsed.hostname.includes('/')
+    );
+  } catch {
+    return false;
+  }
+}
+
+function isLikelyWrongSupabaseHost(hostname: string): boolean {
+  // Common mistake: using "postgres.<project-ref>" as host (this is usually username).
+  return /^postgres\.[a-z0-9-]+$/i.test(hostname);
+}
+
 // ─── Resolve the connection string ───────────────────────────────────────────
 //
 // Priority (highest → lowest):
@@ -19,11 +45,29 @@ const isProduction = process.env.NODE_ENV === 'production';
 // Set SUPABASE_DB_URL (or DATABASE_URL) to that pooler URL in Vercel →
 // Project Settings → Environment Variables.
 //
-const connectionString: string =
-  (process.env.SUPABASE_DB_URL || '').trim() ||
-  (process.env.DATABASE_URL || '').trim() ||
-  (process.env.POSTGRES_URL_NON_POOLING || '').trim() ||
-  (process.env.POSTGRES_URL || '').trim();
+const rawConnectionCandidates = [
+  { key: 'SUPABASE_DB_URL', value: cleanEnv(process.env.SUPABASE_DB_URL) },
+  { key: 'DATABASE_URL', value: cleanEnv(process.env.DATABASE_URL) },
+  { key: 'POSTGRES_URL_NON_POOLING', value: cleanEnv(process.env.POSTGRES_URL_NON_POOLING) },
+  { key: 'POSTGRES_URL', value: cleanEnv(process.env.POSTGRES_URL) },
+];
+
+const validConnectionCandidate = rawConnectionCandidates.find(
+  (item) => item.value && isValidPgConnectionString(item.value)
+);
+
+const invalidConnectionCandidates = rawConnectionCandidates
+  .filter((item) => item.value && !isValidPgConnectionString(item.value))
+  .map((item) => item.key);
+
+if (invalidConnectionCandidates.length > 0) {
+  logger.warn(
+    `[DB] Ignoring malformed connection URL in: ${invalidConnectionCandidates.join(', ')}. ` +
+    'Expected format: postgresql://user:password@host:port/database'
+  );
+}
+
+const connectionString: string = validConnectionCandidate?.value || '';
 
 const hasDatabaseUrl = Boolean(connectionString);
 
@@ -32,6 +76,14 @@ const hasDatabaseUrl = Boolean(connectionString);
 if (isProduction && hasDatabaseUrl) {
   try {
     const parsed = new URL(connectionString);
+    if (isLikelyWrongSupabaseHost(parsed.hostname)) {
+      logger.error(
+        '[DB] DATABASE_URL host looks like a Supabase username, not a host ' +
+        `(${parsed.hostname}). Use Supabase pooler host like ` +
+        'aws-0-<region>.pooler.supabase.com with port 6543.'
+      );
+    }
+
     if (/^db\.[a-z0-9-]+\.supabase\.co$/i.test(parsed.hostname)) {
       logger.error(
         '[DB] DATABASE_URL points to the Supabase DIRECT host ' +
@@ -52,6 +104,19 @@ const hasDbParts = Boolean(
   process.env.DB_HOST && process.env.DB_USER && process.env.DB_NAME
 );
 
+const resolvedDbHost = cleanEnv(process.env.DB_HOST || config.db.host);
+const resolvedDbUser = cleanEnv(process.env.DB_USER || config.db.user);
+const resolvedDbPassword = cleanEnv(process.env.DB_PASSWORD || config.db.password);
+const resolvedDbName = cleanEnv(process.env.DB_NAME || config.db.database);
+
+const dbHostLooksInvalid = /\s|\//.test(resolvedDbHost) || resolvedDbHost.includes('@');
+if (!hasDatabaseUrl && hasDbParts && dbHostLooksInvalid) {
+  logger.error(
+    `[DB] DB_HOST appears invalid: "${resolvedDbHost}". ` +
+    'Use only host name (example: aws-0-us-east-1.pooler.supabase.com) or set SUPABASE_DB_URL/DATABASE_URL.'
+  );
+}
+
 if (isProduction && !hasDatabaseUrl && !hasDbParts) {
   logger.error(
     '[DB] No database connection configured for production. ' +
@@ -69,11 +134,11 @@ const poolConfig = hasDatabaseUrl
       connectionTimeoutMillis: 10_000,
     }
   : {
-      host: process.env.DB_HOST || config.db.host,
+      host: resolvedDbHost,
       port: parseInt(process.env.DB_PORT || '5432', 10),
-      user: process.env.DB_USER || config.db.user,
-      password: process.env.DB_PASSWORD || config.db.password,
-      database: process.env.DB_NAME || config.db.database,
+      user: resolvedDbUser,
+      password: resolvedDbPassword,
+      database: resolvedDbName,
       ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false,
       max: 5,
       idleTimeoutMillis: 30_000,

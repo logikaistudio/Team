@@ -70,17 +70,16 @@ Team/
 Setelah schema siap, isi `backend/.env` atau environment variables Vercel backend:
 
 ```env
-DATABASE_URL=postgresql://postgres:your_password@db.your-project-ref.supabase.co:5432/postgres
-DB_HOST=db.your-project-ref.supabase.co
-DB_PORT=5432
-DB_USER=postgres
-DB_PASSWORD=your_password
-DB_NAME=postgres
-DB_SSL=true
+DATABASE_URL=postgresql://postgres.your-project-ref:your_password_encoded@aws-0-your-region.pooler.supabase.com:6543/postgres?sslmode=require
 
 JWT_SECRET=your_secure_jwt_secret
 JWT_REFRESH_SECRET=your_secure_jwt_refresh_secret
 ```
+
+Catatan penting untuk Vercel:
+- Gunakan satu jalur koneksi saja (`DATABASE_URL` atau `SUPABASE_DB_URL`).
+- Hapus variabel pecahan `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `DB_SSL` agar tidak bentrok.
+- Nonaktifkan akses ke System Environment Variables jika tidak diperlukan.
 
 ### 3. Set Environment Variables Frontend
 

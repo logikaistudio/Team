@@ -8,6 +8,8 @@ export interface Dependency {
 
 export interface Task {
   id: string;
+  projectId?: string;
+  wbsId?: string;
   name: string;
   description?: string;
   start: string; // YYYY-MM-DD

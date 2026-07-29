@@ -116,7 +116,7 @@ export const ProjectsPage: React.FC = () => {
                     <td className="p-3 font-mono">{p.code}</td>
                     <td className="p-3 font-medium">{p.name}</td>
                     <td className="p-3">{p.location}</td>
-                    <td className="p-3">{p.budget ? `$${p.budget}` : '-'}</td>
+                    <td className="p-3">{p.budget ? `${p.currency || 'USD'} ${p.budget}` : '-'}</td>
                     <td className="p-3">
                       <div className="flex gap-2">
                         <button onClick={() => openEdit(p)} className="p-1.5 bg-zinc-100 rounded"><Edit2 size={14} /></button>
@@ -171,9 +171,9 @@ export const ProjectsPage: React.FC = () => {
               <option value="IDR">IDR</option>
               <option value="USD">USD</option>
               <option value="SGD">SGD</option>
-              <option value="RMB">RMB</option>
-              <option value="YEN">YEN</option>
-              <option value="EURO">EURO</option>
+              <option value="CNY">CNY</option>
+              <option value="JPY">JPY</option>
+              <option value="EUR">EUR</option>
             </select>
           </div>
           <div>

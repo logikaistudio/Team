@@ -174,7 +174,27 @@ projectRouter.delete('/wbs/:id', async (req: Request, res: Response, next: NextF
 projectRouter.post('/tasks', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const tenantId = req.tenantId!;
-    const check = taskSchema.safeParse(req.body);
+    const body = { ...(req.body || {}) };
+
+    if (!body.projectId && body.wbsId && isUuid(body.wbsId)) {
+      const wbs = await projectRepository.findWBSById(tenantId, body.wbsId);
+      if (wbs?.projectId) {
+        body.projectId = wbs.projectId;
+      }
+    }
+
+    if (body.plannedStart && body.plannedEnd && !body.durationDays) {
+      const start = new Date(body.plannedStart);
+      const end = new Date(body.plannedEnd);
+      const diffMs = Math.abs(end.getTime() - start.getTime());
+      body.durationDays = Math.max(1, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
+    }
+
+    if (!body.scheduleId && body.projectId && isUuid(body.projectId)) {
+      body.scheduleId = await projectRepository.ensureDefaultScheduleId(tenantId, body.projectId);
+    }
+
+    const check = taskSchema.safeParse(body);
     if (!check.success) {
       throw new BadRequestError(check.error.errors.map((e) => e.message).join(', '));
     }

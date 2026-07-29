@@ -270,6 +270,30 @@ export class ProjectRepository implements IProjectRepository {
   }
 
   // Tasks
+  async ensureDefaultScheduleId(tenantId: string, projectId: string): Promise<string> {
+    const existing = await pool.query(
+      `SELECT id
+       FROM schedules
+       WHERE tenant_id = $1 AND project_id = $2
+       ORDER BY is_active DESC, version ASC, created_at ASC
+       LIMIT 1`,
+      [tenantId, projectId]
+    );
+
+    if (existing.rows.length > 0) {
+      return existing.rows[0].id;
+    }
+
+    const created = await pool.query(
+      `INSERT INTO schedules (tenant_id, project_id, name, version, is_active)
+       VALUES ($1, $2, 'Baseline Schedule', 1, TRUE)
+       RETURNING id`,
+      [tenantId, projectId]
+    );
+
+    return created.rows[0].id;
+  }
+
   async createTask(tenantId: string, task: Partial<Task>): Promise<Task> {
     const query = `
       INSERT INTO tasks (tenant_id, project_id, wbs_id, schedule_id, name, description, planned_start, planned_end, duration_days, planned_cost, weight, progress_percent, status)

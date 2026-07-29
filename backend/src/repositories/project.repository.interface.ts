@@ -22,6 +22,7 @@ export interface IProjectRepository {
   deleteWBS(tenantId: string, id: string): Promise<boolean>;
 
   // Tasks CRUD
+  ensureDefaultScheduleId(tenantId: string, projectId: string): Promise<string>;
   createTask(tenantId: string, task: Partial<Task>): Promise<Task>;
   getTasks(tenantId: string, projectId: string): Promise<Task[]>;
   findTaskById(tenantId: string, id: string): Promise<Task | null>;
