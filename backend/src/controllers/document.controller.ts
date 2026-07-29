@@ -14,12 +14,91 @@ const upload = multer({ storage: multer.memoryStorage() });
 
 documentRouter.use(authenticate);
 
+documentRouter.use(async (_req: Request, _res: Response, next: NextFunction) => {
+  try {
+    await documentRepository.ensureDocumentStorageSchema();
+    next();
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Folder list for a project
+documentRouter.get('/folders', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const tenantId = req.tenantId!;
+    const { projectId } = req.params;
+    const folders = await documentRepository.listFolders(tenantId, projectId);
+    res.json(folders);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Create folder
+documentRouter.post('/folders', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const tenantId = req.tenantId!;
+    const { projectId } = req.params;
+    const name = String(req.body?.name || '').trim();
+    const parentId = req.body?.parentId ? String(req.body.parentId) : null;
+    if (!name) {
+      return res.status(400).json({ message: 'Folder name is required' });
+    }
+    const folder = await documentRepository.createFolder({
+      tenantId,
+      projectId,
+      name,
+      parentId,
+      createdBy: req.user?.id,
+    });
+    res.status(201).json(folder);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Rename folder
+documentRouter.put('/folders/:folderId', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const tenantId = req.tenantId!;
+    const { folderId } = req.params;
+    const name = String(req.body?.name || '').trim();
+    if (!name) {
+      return res.status(400).json({ message: 'Folder name is required' });
+    }
+    const folder = await documentRepository.updateFolderName(tenantId, folderId, name);
+    if (!folder) {
+      return res.status(404).json({ message: 'Folder not found' });
+    }
+    res.json(folder);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Delete folder
+documentRouter.delete('/folders/:folderId', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const tenantId = req.tenantId!;
+    const { folderId } = req.params;
+    await documentRepository.deleteFolder(tenantId, folderId);
+    res.status(204).send();
+  } catch (error) {
+    next(error);
+  }
+});
+
 // Get all documents for a project
 documentRouter.get('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const tenantId = req.tenantId!;
     const { projectId } = req.params;
-    const documents = await documentRepository.getDocumentsByProject(tenantId, projectId);
+    const folderIdRaw = req.query.folderId;
+    const folderId = typeof folderIdRaw === 'string'
+      ? (folderIdRaw === 'root' ? null : folderIdRaw)
+      : undefined;
+    const documents = await documentRepository.getDocumentsByProject(tenantId, projectId, folderId);
     res.json(
       documents.map((doc) => ({
         ...doc,
@@ -65,6 +144,7 @@ documentRouter.post('/', upload.single('file'), async (req: Request, res: Respon
     const { projectId } = req.params;
     const userId = (req as any).user?.id || req.tenantId; // fallback
     const file = (req as any).file;
+    const folderId = req.body?.folderId ? String(req.body.folderId) : null;
     
     if (!file) {
       return res.status(400).json({ error: 'No file uploaded' });
@@ -90,6 +170,7 @@ documentRouter.post('/', upload.single('file'), async (req: Request, res: Respon
       size: file.size,
       filePath,
       uploadedBy: userId,
+      folderId,
       fileData: file.buffer,
     };
 

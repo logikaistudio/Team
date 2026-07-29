@@ -1,11 +1,14 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ShieldAlert,
   BrainCircuit,
   Sparkles,
   Upload,
-  Users
+  Users,
+  Pencil,
+  Trash2
 } from 'lucide-react';
+import { request } from '../services/api';
 
 // ============================================================================
 // RESOURCES & COST PAGE
@@ -40,67 +43,157 @@ export const ResourcesPage: React.FC = () => {
 // 1. PROCUREMENT PAGE
 // ============================================================================
 export const ProcurementPage: React.FC = () => {
+  const [projects, setProjects] = useState<Array<{ id: string; name: string }>>([]);
+  const [selectedProjectId, setSelectedProjectId] = useState('');
+  const [rows, setRows] = useState<Array<{ id: string; prNumber: string; description: string; estimatedCost: number; requiredDate?: string; status: string }>>([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const loadProjects = async () => {
+      try {
+        const data = await request<Array<{ id: string; name: string }>>('/projects');
+        setProjects(data);
+        if (data.length > 0) {
+          setSelectedProjectId(data[0].id);
+        }
+      } catch (error) {
+        console.error('Failed to load projects', error);
+      }
+    };
+    loadProjects();
+  }, []);
+
+  const loadPRs = async (projectId: string) => {
+    if (!projectId) return;
+    setLoading(true);
+    try {
+      const data = await request<Array<{ id: string; prNumber: string; description: string; estimatedCost: number; requiredDate?: string; status: string }>>(`/enterprise/procurement/pr/${projectId}`);
+      setRows(data);
+    } catch (error) {
+      console.error('Failed to load PR list', error);
+      setRows([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (selectedProjectId) {
+      loadPRs(selectedProjectId);
+    }
+  }, [selectedProjectId]);
+
+  const createPR = async () => {
+    if (!selectedProjectId) return;
+    const prNumber = prompt('PR Number (contoh: PR-2026-001):');
+    if (!prNumber) return;
+    const description = prompt('Deskripsi PR:', '') || '';
+    const estimatedCostRaw = prompt('Estimasi biaya:', '0') || '0';
+    const requiredDate = prompt('Required date (YYYY-MM-DD):', '') || '';
+    try {
+      await request('/enterprise/procurement/pr', {
+        method: 'POST',
+        body: JSON.stringify({
+          projectId: selectedProjectId,
+          prNumber: prNumber.trim(),
+          description,
+          estimatedCost: Number(estimatedCostRaw) || 0,
+          requiredDate: requiredDate || null,
+        }),
+      });
+      await loadPRs(selectedProjectId);
+    } catch (error) {
+      console.error('Failed to create PR', error);
+      alert('Gagal membuat PR.');
+    }
+  };
+
+  const editPR = async (row: { id: string; description: string; estimatedCost: number; requiredDate?: string; status: string }) => {
+    const description = prompt('Deskripsi PR:', row.description || '') ?? row.description;
+    const estimatedCostRaw = prompt('Estimasi biaya:', String(row.estimatedCost ?? 0)) ?? String(row.estimatedCost ?? 0);
+    const requiredDate = prompt('Required date (YYYY-MM-DD):', row.requiredDate ? row.requiredDate.slice(0, 10) : '') ?? '';
+    const status = prompt('Status (draft/submitted/approved/rejected):', row.status) ?? row.status;
+    try {
+      await request(`/enterprise/procurement/pr/${row.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          description,
+          estimatedCost: Number(estimatedCostRaw) || 0,
+          requiredDate: requiredDate || null,
+          status,
+        }),
+      });
+      await loadPRs(selectedProjectId);
+    } catch (error) {
+      console.error('Failed to update PR', error);
+      alert('Gagal mengubah PR.');
+    }
+  };
+
+  const deletePR = async (id: string) => {
+    if (!confirm('Hapus PR ini?')) return;
+    try {
+      await request(`/enterprise/procurement/pr/${id}`, { method: 'DELETE' });
+      await loadPRs(selectedProjectId);
+    } catch (error) {
+      console.error('Failed to delete PR', error);
+      alert('Gagal menghapus PR.');
+    }
+  };
+
   return (
     <div className="space-y-6">
-      <div>
+      <div className="flex justify-between items-center gap-3">
         <h1 className="text-2xl font-bold tracking-tight">Procurement & Sourcing</h1>
-        <p className="text-zinc-500 text-sm">Monitor Purchase Requisitions, RFQs, and Purchase Orders (PO).</p>
+        <div className="flex items-center gap-2">
+          <select
+            value={selectedProjectId}
+            onChange={(e) => setSelectedProjectId(e.target.value)}
+            className="px-3 py-2 text-xs rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900"
+          >
+            {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+          <button onClick={createPR} className="px-2.5 py-1 bg-brand-600 hover:bg-brand-500 text-white rounded text-[11px] font-semibold">Add PR</button>
+        </div>
       </div>
+      <p className="text-zinc-500 text-sm">Data procurement diambil langsung dari Supabase.</p>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 bg-white dark:bg-[#0c0c0e] border border-zinc-200 dark:border-zinc-800 rounded-xl overflow-hidden">
-          <div className="p-4 border-b border-zinc-200 dark:border-zinc-800 flex justify-between items-center bg-zinc-900/10">
-            <h3 className="font-semibold text-xs uppercase text-zinc-400">Active Purchase Orders</h3>
-            <button className="px-2.5 py-1 bg-brand-600 hover:bg-brand-500 text-white rounded text-[11px] font-semibold">New PO</button>
-          </div>
+      <div className="bg-white dark:bg-[#0c0c0e] border border-zinc-200 dark:border-zinc-800 rounded-xl overflow-hidden">
+        {loading ? (
+          <div className="p-8 text-sm text-zinc-500">Memuat data procurement...</div>
+        ) : rows.length === 0 ? (
+          <div className="p-8 text-sm text-zinc-500">Belum ada data PR untuk proyek ini.</div>
+        ) : (
           <table className="w-full text-left border-collapse text-xs">
             <thead>
-              <tr className="border-b border-zinc-200 dark:border-zinc-800 text-zinc-500 uppercase">
-                <th className="p-3">PO Number</th>
-                <th className="p-3">Vendor</th>
-                <th className="p-3">Total Amount</th>
-                <th className="p-3">Delivery Date</th>
+              <tr className="border-b border-zinc-200 dark:border-zinc-800 text-zinc-500 uppercase bg-zinc-50 dark:bg-zinc-900/30">
+                <th className="p-3">PR Number</th>
+                <th className="p-3">Description</th>
+                <th className="p-3">Estimated Cost</th>
+                <th className="p-3">Required Date</th>
                 <th className="p-3">Status</th>
+                <th className="p-3 text-center">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-200 dark:divide-zinc-800">
-              <tr>
-                <td className="p-3 font-semibold text-brand-400">PO-2026-004</td>
-                <td className="p-3">Concrete Supply Indo Ltd</td>
-                <td className="p-3 font-medium">$42,000</td>
-                <td className="p-3">2026-06-25</td>
-                <td className="p-3"><span className="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Approved</span></td>
-              </tr>
-              <tr>
-                <td className="p-3 font-semibold text-brand-400">PO-2026-005</td>
-                <td className="p-3">Steel Fabricators PT</td>
-                <td className="p-3 font-medium">$78,500</td>
-                <td className="p-3">2026-07-02</td>
-                <td className="p-3"><span className="px-2 py-0.5 rounded-full bg-yellow-500/10 text-yellow-400 border border-yellow-500/20">Sent</span></td>
-              </tr>
+              {rows.map((row) => (
+                <tr key={row.id}>
+                  <td className="p-3 font-semibold text-brand-500">{row.prNumber}</td>
+                  <td className="p-3">{row.description || '-'}</td>
+                  <td className="p-3">{Number(row.estimatedCost || 0).toLocaleString('id-ID')}</td>
+                  <td className="p-3">{row.requiredDate ? new Date(row.requiredDate).toLocaleDateString('id-ID') : '-'}</td>
+                  <td className="p-3">{row.status}</td>
+                  <td className="p-3">
+                    <div className="flex items-center justify-center gap-2">
+                      <button onClick={() => editPR(row)} className="p-1.5 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-500"><Pencil size={14} /></button>
+                      <button onClick={() => deletePR(row.id)} className="p-1.5 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500"><Trash2 size={14} /></button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
-        </div>
-
-        <div className="bg-white dark:bg-[#0c0c0e] border border-zinc-200 dark:border-zinc-800 p-6 rounded-xl">
-          <h3 className="font-semibold text-sm mb-4">Vendor Directory & Ratings</h3>
-          <div className="space-y-4">
-            <div className="flex justify-between items-center border-b border-zinc-200 dark:border-zinc-800 pb-3">
-              <div>
-                <h4 className="font-semibold text-xs">Concrete Supply Indo Ltd</h4>
-                <span className="text-[10px] text-zinc-500">Materials supply</span>
-              </div>
-              <span className="text-xs font-bold text-yellow-500">★ 4.8</span>
-            </div>
-            <div className="flex justify-between items-center">
-              <div>
-                <h4 className="font-semibold text-xs">Steel Fabricators PT</h4>
-                <span className="text-[10px] text-zinc-500">Structural fabrication</span>
-              </div>
-              <span className="text-xs font-bold text-yellow-500">★ 4.5</span>
-            </div>
-          </div>
-        </div>
+        )}
       </div>
     </div>
   );
@@ -165,72 +258,164 @@ export const DocumentsPage: React.FC = () => {
 // 3. SAFETY & QUALITY PAGE
 // ============================================================================
 export const SafetyPage: React.FC = () => {
+  const [projects, setProjects] = useState<Array<{ id: string; name: string }>>([]);
+  const [selectedProjectId, setSelectedProjectId] = useState('');
+  const [rows, setRows] = useState<Array<{ id: string; incidentDate?: string; severity: string; description: string; location: string; status: string }>>([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const loadProjects = async () => {
+      try {
+        const data = await request<Array<{ id: string; name: string }>>('/projects');
+        setProjects(data);
+        if (data.length > 0) {
+          setSelectedProjectId(data[0].id);
+        }
+      } catch (error) {
+        console.error('Failed to load projects', error);
+      }
+    };
+    loadProjects();
+  }, []);
+
+  const loadIncidents = async (projectId: string) => {
+    if (!projectId) return;
+    setLoading(true);
+    try {
+      const data = await request<Array<{ id: string; incidentDate?: string; severity: string; description: string; location: string; status: string }>>(`/enterprise/hse/incidents/${projectId}`);
+      setRows(data);
+    } catch (error) {
+      console.error('Failed to load incidents', error);
+      setRows([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (selectedProjectId) {
+      loadIncidents(selectedProjectId);
+    }
+  }, [selectedProjectId]);
+
+  const createIncident = async () => {
+    if (!selectedProjectId) return;
+    const description = prompt('Deskripsi incident:');
+    if (!description) return;
+    const severity = prompt('Severity (low/medium/high/critical):', 'medium') || 'medium';
+    const location = prompt('Lokasi incident:', '-') || '-';
+    const incidentDate = prompt('Tanggal incident (YYYY-MM-DD):', new Date().toISOString().slice(0, 10)) || new Date().toISOString().slice(0, 10);
+    try {
+      await request('/enterprise/hse/incidents', {
+        method: 'POST',
+        body: JSON.stringify({
+          projectId: selectedProjectId,
+          incidentDate,
+          severity,
+          description,
+          location,
+        }),
+      });
+      await loadIncidents(selectedProjectId);
+    } catch (error) {
+      console.error('Failed to create incident', error);
+      alert('Gagal membuat incident.');
+    }
+  };
+
+  const editIncident = async (row: { id: string; severity: string; description: string; location: string; status: string }) => {
+    const severity = prompt('Severity:', row.severity) ?? row.severity;
+    const description = prompt('Deskripsi:', row.description) ?? row.description;
+    const location = prompt('Lokasi:', row.location) ?? row.location;
+    const status = prompt('Status (investigating/closed):', row.status) ?? row.status;
+    try {
+      await request(`/enterprise/hse/incidents/${row.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ severity, description, location, status }),
+      });
+      await loadIncidents(selectedProjectId);
+    } catch (error) {
+      console.error('Failed to update incident', error);
+      alert('Gagal mengubah incident.');
+    }
+  };
+
+  const deleteIncident = async (id: string) => {
+    if (!confirm('Hapus incident ini?')) return;
+    try {
+      await request(`/enterprise/hse/incidents/${id}`, { method: 'DELETE' });
+      await loadIncidents(selectedProjectId);
+    } catch (error) {
+      console.error('Failed to delete incident', error);
+      alert('Gagal menghapus incident.');
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">HSE & Quality Control</h1>
-          <p className="text-zinc-500 text-sm">Conduct structural inspections, log incident audits, and trace open NCRs.</p>
+          <p className="text-zinc-500 text-sm">Data incident diambil langsung dari Supabase.</p>
         </div>
+        <div className="flex items-center gap-2">
+          <select
+            value={selectedProjectId}
+            onChange={(e) => setSelectedProjectId(e.target.value)}
+            className="px-3 py-2 text-xs rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900"
+          >
+            {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+          <button onClick={createIncident} className="flex items-center gap-1.5 px-3 py-1.5 bg-brand-600 hover:bg-brand-500 text-white text-xs font-semibold rounded-lg">
+            <ShieldAlert size={14} />
+            <span>Report Incident</span>
+          </button>
+        </div>
+      </div>
+
+      <div className="bg-white dark:bg-[#0c0c0e] border border-zinc-200 dark:border-zinc-800 rounded-xl overflow-hidden">
+        {loading ? (
+          <div className="p-8 text-sm text-zinc-500">Memuat incident...</div>
+        ) : rows.length === 0 ? (
+          <div className="p-8 text-sm text-zinc-500">Belum ada incident untuk proyek ini.</div>
+        ) : (
+          <table className="w-full text-left border-collapse text-xs">
+            <thead>
+              <tr className="border-b border-zinc-200 dark:border-zinc-800 text-zinc-500 uppercase bg-zinc-50 dark:bg-zinc-900/30">
+                <th className="p-3">Date</th>
+                <th className="p-3">Severity</th>
+                <th className="p-3">Description</th>
+                <th className="p-3">Location</th>
+                <th className="p-3">Status</th>
+                <th className="p-3 text-center">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-zinc-200 dark:divide-zinc-800">
+              {rows.map((row) => (
+                <tr key={row.id}>
+                  <td className="p-3">{row.incidentDate ? new Date(row.incidentDate).toLocaleDateString('id-ID') : '-'}</td>
+                  <td className="p-3 font-semibold">{row.severity}</td>
+                  <td className="p-3">{row.description}</td>
+                  <td className="p-3">{row.location || '-'}</td>
+                  <td className="p-3">{row.status}</td>
+                  <td className="p-3">
+                    <div className="flex items-center justify-center gap-2">
+                      <button onClick={() => editIncident(row)} className="p-1.5 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-500"><Pencil size={14} /></button>
+                      <button onClick={() => deleteIncident(row.id)} className="p-1.5 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500"><Trash2 size={14} /></button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      <div className="hidden">
         <button className="flex items-center gap-1.5 px-3 py-1.5 bg-brand-600 hover:bg-brand-500 text-white text-xs font-semibold rounded-lg">
           <ShieldAlert size={14} />
           <span>Report Incident</span>
         </button>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        
-        {/* NCR widget */}
-        <div className="md:col-span-2 bg-white dark:bg-[#0c0c0e] border border-zinc-200 dark:border-zinc-800 rounded-xl overflow-hidden">
-          <div className="p-4 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-900/10">
-            <h3 className="font-semibold text-xs text-zinc-400 uppercase">Non-Conformance Reports (NCR)</h3>
-          </div>
-          <table className="w-full text-left border-collapse text-xs">
-            <thead>
-              <tr className="border-b border-zinc-200 dark:border-zinc-800 text-zinc-500 uppercase">
-                <th className="p-3">NCR Code</th>
-                <th className="p-3">Description</th>
-                <th className="p-3">Target Date</th>
-                <th className="p-3">Status</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-zinc-200 dark:divide-zinc-800">
-              <tr>
-                <td className="p-3 font-semibold text-red-500">NCR-CIV-021</td>
-                <td className="p-3">Concrete strength core result below baseline specs</td>
-                <td className="p-3">2026-06-20</td>
-                <td className="p-3"><span className="px-2 py-0.5 rounded-full bg-red-500/10 text-red-400 border border-red-500/20">Open</span></td>
-              </tr>
-              <tr>
-                <td className="p-3 font-semibold text-red-500">NCR-MEC-014</td>
-                <td className="p-3">Welding crack detected in line A pump outlet flange</td>
-                <td className="p-3">2026-06-18</td>
-                <td className="p-3"><span className="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Resolved</span></td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-
-        {/* Inspections sidebar */}
-        <div className="bg-white dark:bg-[#0c0c0e] border border-zinc-200 dark:border-zinc-800 p-6 rounded-xl space-y-4">
-          <h3 className="font-semibold text-sm">Site Inspections Checklist</h3>
-          <div className="space-y-3">
-            <div className="p-3 bg-zinc-900/50 rounded border border-zinc-800 flex items-center justify-between text-xs">
-              <div>
-                <h4 className="font-semibold">Excavation Prep</h4>
-                <p className="text-[10px] text-zinc-500">Inspector: John</p>
-              </div>
-              <span className="text-green-500 font-bold">Passed</span>
-            </div>
-            <div className="p-3 bg-zinc-900/50 rounded border border-zinc-800 flex items-center justify-between text-xs">
-              <div>
-                <h4 className="font-semibold">Rebar Alignment</h4>
-                <p className="text-[10px] text-zinc-500">Inspector: John</p>
-              </div>
-              <span className="text-red-400 font-bold">Failed</span>
-            </div>
-          </div>
-        </div>
       </div>
     </div>
   );

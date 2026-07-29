@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Upload, Download, Trash2, FileText, File, FileSpreadsheet, FileImage, FolderOpen } from 'lucide-react';
+import { Upload, Download, Trash2, FileText, File, FileSpreadsheet, FileImage, FolderOpen, FolderPlus, Pencil, FolderX } from 'lucide-react';
 import { request } from '../services/api';
 import { useStore } from '../store/useStore';
 
@@ -10,6 +10,7 @@ interface Project {
 
 interface ProjectDocument {
   id: string;
+  folderId?: string | null;
   name: string;
   type: string;
   size: number;
@@ -18,10 +19,18 @@ interface ProjectDocument {
   createdAt: string;
 }
 
+interface DocumentFolder {
+  id: string;
+  name: string;
+  parentId?: string | null;
+}
+
 export const DocumentPoolingPage: React.FC = () => {
   const [documents, setDocuments] = useState<ProjectDocument[]>([]);
+  const [folders, setFolders] = useState<DocumentFolder[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
+  const [selectedFolderId, setSelectedFolderId] = useState<string>('all');
   const [uploading, setUploading] = useState(false);
   const [loading, setLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -45,15 +54,39 @@ export const DocumentPoolingPage: React.FC = () => {
   // When project changes: reload documents
   useEffect(() => {
     if (selectedProjectId) {
+      setSelectedFolderId('all');
+      fetchFolders();
       fetchDocuments();
     }
   }, [selectedProjectId]);
+
+  useEffect(() => {
+    if (selectedProjectId) {
+      fetchDocuments();
+    }
+  }, [selectedProjectId, selectedFolderId]);
+
+  const fetchFolders = async () => {
+    if (!selectedProjectId) return;
+    try {
+      const data = await request<DocumentFolder[]>(`/projects/${selectedProjectId}/documents/folders`);
+      setFolders(data);
+    } catch (error) {
+      console.error('Failed to fetch folders', error);
+      setFolders([]);
+    }
+  };
 
   const fetchDocuments = async () => {
     if (!selectedProjectId) return;
     setLoading(true);
     try {
-      const data = await request<ProjectDocument[]>(`/projects/${selectedProjectId}/documents`);
+      const query = selectedFolderId === 'all'
+        ? ''
+        : selectedFolderId === 'root'
+          ? '?folderId=root'
+          : `?folderId=${encodeURIComponent(selectedFolderId)}`;
+      const data = await request<ProjectDocument[]>(`/projects/${selectedProjectId}/documents${query}`);
       setDocuments(data);
     } catch (error) {
       console.error('Failed to fetch documents', error);
@@ -70,6 +103,9 @@ export const DocumentPoolingPage: React.FC = () => {
     setUploading(true);
     const formData = new FormData();
     formData.append('file', file);
+    if (selectedFolderId !== 'all' && selectedFolderId !== 'root') {
+      formData.append('folderId', selectedFolderId);
+    }
 
     try {
       await request(`/projects/${selectedProjectId}/documents`, {
@@ -82,9 +118,56 @@ export const DocumentPoolingPage: React.FC = () => {
       }
     } catch (error) {
       console.error('Failed to upload document', error);
-      alert('Upload gagal. Pastikan backend berjalan dan Anda memiliki akses.');
+      const message = error instanceof Error ? error.message : 'Unknown upload error';
+      alert(`Upload gagal: ${message}`);
     } finally {
       setUploading(false);
+    }
+  };
+
+  const handleCreateFolder = async () => {
+    if (!selectedProjectId) return;
+    const name = prompt('Nama folder baru:');
+    if (!name || !name.trim()) return;
+    try {
+      await request(`/projects/${selectedProjectId}/documents/folders`, {
+        method: 'POST',
+        body: JSON.stringify({ name: name.trim(), parentId: null }),
+      });
+      await fetchFolders();
+    } catch (error) {
+      console.error('Failed to create folder', error);
+      alert('Gagal membuat folder.');
+    }
+  };
+
+  const handleRenameFolder = async (folder: DocumentFolder) => {
+    const nextName = prompt('Ubah nama folder:', folder.name);
+    if (!nextName || !nextName.trim() || nextName.trim() === folder.name) return;
+    try {
+      await request(`/projects/${selectedProjectId}/documents/folders/${folder.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ name: nextName.trim() }),
+      });
+      await fetchFolders();
+    } catch (error) {
+      console.error('Failed to rename folder', error);
+      alert('Gagal mengubah nama folder.');
+    }
+  };
+
+  const handleDeleteFolder = async (folder: DocumentFolder) => {
+    if (!confirm(`Hapus folder "${folder.name}"? Dokumen di dalamnya akan dipindah ke root.`)) return;
+    try {
+      await request(`/projects/${selectedProjectId}/documents/folders/${folder.id}`, { method: 'DELETE' });
+      if (selectedFolderId === folder.id) {
+        setSelectedFolderId('all');
+      }
+      await fetchFolders();
+      await fetchDocuments();
+    } catch (error) {
+      console.error('Failed to delete folder', error);
+      alert('Gagal menghapus folder.');
     }
   };
 
@@ -190,6 +273,50 @@ export const DocumentPoolingPage: React.FC = () => {
 
       {/* Document Table */}
       <div className="bg-white dark:bg-[#0c0c0e] border border-zinc-200 dark:border-zinc-800 rounded-xl overflow-hidden">
+        {/* Folder toolbar */}
+        <div className="px-4 py-3 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/30">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                onClick={() => setSelectedFolderId('all')}
+                className={`px-2.5 py-1 rounded-md text-xs border ${selectedFolderId === 'all' ? 'bg-brand-600 text-white border-brand-600' : 'bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300'}`}
+              >
+                All
+              </button>
+              <button
+                onClick={() => setSelectedFolderId('root')}
+                className={`px-2.5 py-1 rounded-md text-xs border ${selectedFolderId === 'root' ? 'bg-brand-600 text-white border-brand-600' : 'bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300'}`}
+              >
+                Root
+              </button>
+              {folders.map((folder) => (
+                <div key={folder.id} className="inline-flex items-center gap-1">
+                  <button
+                    onClick={() => setSelectedFolderId(folder.id)}
+                    className={`px-2.5 py-1 rounded-md text-xs border ${selectedFolderId === folder.id ? 'bg-brand-600 text-white border-brand-600' : 'bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300'}`}
+                  >
+                    {folder.name}
+                  </button>
+                  <button onClick={() => handleRenameFolder(folder)} className="p-1 text-zinc-500 hover:text-brand-500" title="Rename folder">
+                    <Pencil size={12} />
+                  </button>
+                  <button onClick={() => handleDeleteFolder(folder)} className="p-1 text-zinc-500 hover:text-red-500" title="Delete folder">
+                    <FolderX size={12} />
+                  </button>
+                </div>
+              ))}
+            </div>
+            <button
+              onClick={handleCreateFolder}
+              disabled={!selectedProjectId}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-900 dark:bg-zinc-700 hover:bg-zinc-800 text-white text-xs rounded-md disabled:opacity-50"
+            >
+              <FolderPlus size={13} />
+              <span>Add Folder</span>
+            </button>
+          </div>
+        </div>
+
         {!selectedProjectId ? (
           <div className="p-12 text-center flex flex-col items-center">
             <FolderOpen className="text-zinc-300 dark:text-zinc-700 mb-4" size={48} />
@@ -208,6 +335,7 @@ export const DocumentPoolingPage: React.FC = () => {
             <thead>
               <tr className="border-b border-zinc-200 dark:border-zinc-800 text-zinc-500 bg-zinc-50 dark:bg-zinc-900/40 text-[11px] uppercase tracking-wider">
                 <th className="p-3 font-semibold">Nama File</th>
+                <th className="p-3 w-40 font-semibold">Folder</th>
                 <th className="p-3 w-28 font-semibold">Tipe</th>
                 <th className="p-3 w-24 text-right font-semibold">Ukuran</th>
                 <th className="p-3 w-48 font-semibold">Tanggal Upload</th>
@@ -224,6 +352,9 @@ export const DocumentPoolingPage: React.FC = () => {
                         {doc.name}
                       </span>
                     </div>
+                  </td>
+                  <td className="p-3 text-zinc-500">
+                    {folders.find((f) => f.id === doc.folderId)?.name || 'Root'}
                   </td>
                   <td className="p-3 text-zinc-500">
                     {(doc.type.split('/')[1] || doc.type).toUpperCase()}

@@ -83,6 +83,45 @@ enterpriseRouter.post('/procurement/pr', async (req: Request, res: Response, nex
   }
 });
 
+enterpriseRouter.get('/procurement/pr/:projectId', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const tenantId = req.tenantId!;
+    const { projectId } = req.params;
+    const rows = await enterpriseUseCase.listPRs(tenantId, projectId);
+    res.json(rows);
+  } catch (error) {
+    next(error);
+  }
+});
+
+enterpriseRouter.put('/procurement/pr/:id', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const tenantId = req.tenantId!;
+    const updated = await enterpriseUseCase.updatePR(tenantId, req.params.id, {
+      description: req.body?.description,
+      estimatedCost: typeof req.body?.estimatedCost === 'number' ? req.body.estimatedCost : undefined,
+      status: req.body?.status,
+      requiredDate: req.body?.requiredDate ? new Date(req.body.requiredDate) : undefined,
+    });
+    if (!updated) {
+      return res.status(404).json({ message: 'PR not found' });
+    }
+    res.json(updated);
+  } catch (error) {
+    next(error);
+  }
+});
+
+enterpriseRouter.delete('/procurement/pr/:id', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const tenantId = req.tenantId!;
+    await enterpriseUseCase.deletePR(tenantId, req.params.id);
+    res.status(204).send();
+  } catch (error) {
+    next(error);
+  }
+});
+
 enterpriseRouter.post('/procurement/rfq', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const tenantId = req.tenantId!;
@@ -125,6 +164,44 @@ enterpriseRouter.post('/hse/incidents', async (req: Request, res: Response, next
     const { projectId, incidentDate, severity, description, location } = req.body;
     const incident = await enterpriseUseCase.logHSEIncident(tenantId, projectId, reporterId, incidentDate, severity, description, location);
     res.status(201).json(incident);
+  } catch (error) {
+    next(error);
+  }
+});
+
+enterpriseRouter.get('/hse/incidents/:projectId', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const tenantId = req.tenantId!;
+    const rows = await enterpriseUseCase.listIncidents(tenantId, req.params.projectId);
+    res.json(rows);
+  } catch (error) {
+    next(error);
+  }
+});
+
+enterpriseRouter.put('/hse/incidents/:id', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const tenantId = req.tenantId!;
+    const updated = await enterpriseUseCase.updateIncident(tenantId, req.params.id, {
+      severity: req.body?.severity,
+      description: req.body?.description,
+      location: req.body?.location,
+      status: req.body?.status,
+    });
+    if (!updated) {
+      return res.status(404).json({ message: 'Incident not found' });
+    }
+    res.json(updated);
+  } catch (error) {
+    next(error);
+  }
+});
+
+enterpriseRouter.delete('/hse/incidents/:id', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const tenantId = req.tenantId!;
+    await enterpriseUseCase.deleteIncident(tenantId, req.params.id);
+    res.status(204).send();
   } catch (error) {
     next(error);
   }

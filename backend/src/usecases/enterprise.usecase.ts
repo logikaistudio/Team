@@ -125,6 +125,45 @@ export class EnterpriseUseCase {
     return rows[0];
   }
 
+  async listPRs(tenantId: string, projectId: string): Promise<any[]> {
+    const { rows } = await pool.query(
+      `SELECT id, pr_number as "prNumber", description, estimated_cost as "estimatedCost",
+              status, required_date as "requiredDate", created_at as "createdAt", updated_at as "updatedAt"
+       FROM purchase_requisitions
+       WHERE tenant_id = $1 AND project_id = $2
+       ORDER BY created_at DESC`,
+      [tenantId, projectId]
+    );
+    return rows;
+  }
+
+  async updatePR(tenantId: string, prId: string, payload: { description?: string; estimatedCost?: number; status?: string; requiredDate?: Date | null }): Promise<any> {
+    const { rows } = await pool.query(
+      `UPDATE purchase_requisitions
+       SET description = COALESCE($1, description),
+           estimated_cost = COALESCE($2, estimated_cost),
+           status = COALESCE($3, status),
+           required_date = COALESCE($4, required_date),
+           updated_at = NOW()
+       WHERE tenant_id = $5 AND id = $6
+       RETURNING id, pr_number as "prNumber", description, estimated_cost as "estimatedCost",
+                 status, required_date as "requiredDate", created_at as "createdAt", updated_at as "updatedAt"`,
+      [
+        payload.description ?? null,
+        typeof payload.estimatedCost === 'number' ? payload.estimatedCost : null,
+        payload.status ?? null,
+        payload.requiredDate ?? null,
+        tenantId,
+        prId,
+      ]
+    );
+    return rows[0] || null;
+  }
+
+  async deletePR(tenantId: string, prId: string): Promise<void> {
+    await pool.query(`DELETE FROM purchase_requisitions WHERE tenant_id = $1 AND id = $2`, [tenantId, prId]);
+  }
+
   async createRFQ(tenantId: string, projectId: string, prId: string, rfqNumber: string, title: string, closingDate: Date): Promise<any> {
     const query = `
       INSERT INTO rfqs (tenant_id, project_id, pr_id, rfq_number, title, closing_date, status)
@@ -177,5 +216,37 @@ export class EnterpriseUseCase {
     `;
     const { rows } = await pool.query(query, [tenantId, projectId, reporterId, incidentDate, severity, description, location]);
     return rows[0];
+  }
+
+  async listIncidents(tenantId: string, projectId: string): Promise<any[]> {
+    const { rows } = await pool.query(
+      `SELECT id, incident_date as "incidentDate", severity, description, location, status,
+              created_at as "createdAt", updated_at as "updatedAt"
+       FROM incidents
+       WHERE tenant_id = $1 AND project_id = $2
+       ORDER BY created_at DESC`,
+      [tenantId, projectId]
+    );
+    return rows;
+  }
+
+  async updateIncident(tenantId: string, incidentId: string, payload: { severity?: string; description?: string; location?: string; status?: string }): Promise<any> {
+    const { rows } = await pool.query(
+      `UPDATE incidents
+       SET severity = COALESCE($1, severity),
+           description = COALESCE($2, description),
+           location = COALESCE($3, location),
+           status = COALESCE($4, status),
+           updated_at = NOW()
+       WHERE tenant_id = $5 AND id = $6
+       RETURNING id, incident_date as "incidentDate", severity, description, location, status,
+                 created_at as "createdAt", updated_at as "updatedAt"`,
+      [payload.severity ?? null, payload.description ?? null, payload.location ?? null, payload.status ?? null, tenantId, incidentId]
+    );
+    return rows[0] || null;
+  }
+
+  async deleteIncident(tenantId: string, incidentId: string): Promise<void> {
+    await pool.query(`DELETE FROM incidents WHERE tenant_id = $1 AND id = $2`, [tenantId, incidentId]);
   }
 }
