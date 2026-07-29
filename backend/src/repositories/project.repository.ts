@@ -75,27 +75,54 @@ export class ProjectRepository implements IProjectRepository {
   }
 
   async create(tenantId: string, project: Partial<Project>): Promise<Project> {
-    const query = `
-      INSERT INTO projects (tenant_id, name, code, description, status_id, start_date, end_date, budget, currency, location)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-      RETURNING id, tenant_id AS "tenantId", name, code, description, status_id AS "statusId",
-                start_date AS "startDate", end_date AS "endDate", budget, currency, location,
-                0.00::numeric AS "progressPercent", created_at AS "createdAt", updated_at AS "updatedAt"
-    `;
-    const values = [
-      tenantId,
-      project.name,
-      project.code,
-      project.description,
-      project.statusId,
-      project.startDate,
-      project.endDate,
-      project.budget || 0.00,
-      project.currency || 'USD',
-      project.location,
-    ];
-    const { rows } = await pool.query(query, values);
-    return rows[0];
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      const insertProjectQuery = `
+        INSERT INTO projects (tenant_id, name, code, description, status_id, start_date, end_date, budget, currency, location)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        RETURNING id, tenant_id AS "tenantId", name, code, description, status_id AS "statusId",
+                  start_date AS "startDate", end_date AS "endDate", budget, currency, location,
+                  0.00::numeric AS "progressPercent", created_at AS "createdAt", updated_at AS "updatedAt"
+      `;
+      const projectValues = [
+        tenantId,
+        project.name,
+        project.code,
+        project.description,
+        project.statusId,
+        project.startDate,
+        project.endDate,
+        project.budget || 0.00,
+        project.currency || 'USD',
+        project.location,
+      ];
+      const { rows } = await client.query(insertProjectQuery, projectValues);
+      const createdProject = rows[0];
+
+      await client.query(
+        `INSERT INTO schedules (tenant_id, project_id, name, version, is_active)
+         VALUES ($1, $2, 'Baseline Schedule', 1, TRUE)
+         ON CONFLICT (project_id, version) DO NOTHING`,
+        [tenantId, createdProject.id]
+      );
+
+      await client.query(
+        `INSERT INTO wbs (tenant_id, project_id, parent_id, code, name, description, weight)
+         VALUES ($1, $2, NULL, '1.0', 'Baseline Work Breakdown', 'Root baseline node for project setup', 100.00)
+         ON CONFLICT (project_id, code) DO NOTHING`,
+        [tenantId, createdProject.id]
+      );
+
+      await client.query('COMMIT');
+      return createdProject;
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   async findById(tenantId: string, id: string): Promise<Project | null> {
