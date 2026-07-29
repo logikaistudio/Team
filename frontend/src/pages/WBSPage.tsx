@@ -986,6 +986,78 @@ export const WBSPage: React.FC = () => {
     }
   };
 
+  const replaceTaskDates = (tasks: Task[], taskId: string, start: string, end: string): Task[] => {
+    return tasks.map((task) => {
+      if (task.id === taskId) {
+        return { ...task, start, end: task.isMilestone ? start : end };
+      }
+      if (task.subtasks && task.subtasks.length > 0) {
+        return { ...task, subtasks: replaceTaskDates(task.subtasks, taskId, start, end) };
+      }
+      return task;
+    });
+  };
+
+  const handleTaskDateChangeFromCalendar = async (taskId: string, start: string, end: string) => {
+    const task = getAllTasksFlat(nodes.flatMap((node) => node.tasks)).find((t) => t.id === taskId);
+    if (!task) return;
+
+    const normalizedEnd = task.isMilestone ? start : end;
+
+    setNodes((prev) =>
+      prev.map((node) => ({
+        ...node,
+        tasks: replaceTaskDates(node.tasks, taskId, start, normalizedEnd),
+      }))
+    );
+
+    setEditingTask((prev) => {
+      if (!prev || prev.id !== taskId) return prev;
+      return { ...prev, start, end: normalizedEnd };
+    });
+
+    setEditTaskForm((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        start,
+        end: normalizedEnd,
+      };
+    });
+
+    if (!isUuid(taskId)) return;
+
+    try {
+      const payload = {
+        name: task.name,
+        plannedStart: start,
+        plannedEnd: normalizedEnd,
+        plannedCost: Number(task.cost),
+        progressPercent: Number(task.progress),
+        status: task.status,
+        resources: task.resources,
+        dependencies: task.dependencies,
+      };
+
+      const updated = await request<any>(`/projects/tasks/${taskId}`, {
+        method: 'PUT',
+        body: JSON.stringify(payload),
+      });
+
+      const normalized = normalizeTask(updated);
+      setNodes((prev) =>
+        prev.map((node) => ({
+          ...node,
+          tasks: node.tasks.map((t) => (t.id === taskId ? normalized : t)),
+        }))
+      );
+      setEditingTask((prev) => (prev && prev.id === taskId ? normalized : prev));
+    } catch (error) {
+      console.error('Failed to persist calendar date shift', error);
+      alert('Failed to update task date from calendar.');
+    }
+  };
+
   const handleAddDependencyToEdit = () => {
      if (!editTaskForm || !newDep.taskId) return;
      // Prevent duplicates
@@ -1324,6 +1396,7 @@ export const WBSPage: React.FC = () => {
           expandedNodes={expandedNodes} 
           expandedTasks={expandedTasks} 
           onTaskClick={setEditingTask} 
+          onTaskDateChange={handleTaskDateChangeFromCalendar}
           scrollRef={rightPaneRef}
           onScroll={handleRightScroll}
         />

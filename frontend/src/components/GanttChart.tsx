@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import clsx from 'clsx';
 
 export interface Dependency {
@@ -37,6 +37,7 @@ interface GanttChartProps {
   expandedNodes: Record<string, boolean>;
   expandedTasks: Record<string, boolean>;
   onTaskClick?: (task: Task) => void;
+  onTaskDateChange?: (taskId: string, start: string, end: string) => void;
   scrollRef?: React.Ref<HTMLDivElement>;
   onScroll?: (e: React.UIEvent<HTMLDivElement>) => void;
 }
@@ -62,7 +63,24 @@ const getIsoWeekEnd = (date: Date) => {
   return end;
 };
 
-export const GanttChart: React.FC<GanttChartProps> = ({ nodes, expandedNodes, expandedTasks, onTaskClick, scrollRef, onScroll }) => {
+const addDays = (isoDate: string, days: number): string => {
+  const date = new Date(isoDate);
+  date.setDate(date.getDate() + days);
+  return date.toISOString().split('T')[0];
+};
+
+export const GanttChart: React.FC<GanttChartProps> = ({ nodes, expandedNodes, expandedTasks, onTaskClick, onTaskDateChange, scrollRef, onScroll }) => {
+  const [draggingTaskId, setDraggingTaskId] = useState<string | null>(null);
+  const [previewDates, setPreviewDates] = useState<Record<string, { start: string; end: string }>>({});
+  const dragStateRef = useRef<{
+    taskId: string;
+    startX: number;
+    originalStart: string;
+    originalEnd: string;
+    isMilestone: boolean;
+    lastDeltaDays: number;
+    hasMoved: boolean;
+  } | null>(null);
   const { minDate, maxDate } = useMemo(() => {
     let min = new Date('2099-12-31');
     let max = new Date('1970-01-01');
@@ -113,6 +131,55 @@ export const GanttChart: React.FC<GanttChartProps> = ({ nodes, expandedNodes, ex
   // Dynamic day width with a minimum limit of 28px to prevent date header overlap
   const MAX_CHART_WIDTH = 1200; // px
   const dayWidth = Math.max(28, Math.min(60, Math.floor(MAX_CHART_WIDTH / Math.max(1, totalDays))));
+
+  useEffect(() => {
+    if (!draggingTaskId) return;
+
+    const handleMouseMove = (event: MouseEvent) => {
+      const dragState = dragStateRef.current;
+      if (!dragState) return;
+
+      const deltaDays = Math.round((event.clientX - dragState.startX) / dayWidth);
+      if (deltaDays === dragState.lastDeltaDays) return;
+
+      dragState.lastDeltaDays = deltaDays;
+      dragState.hasMoved = dragState.hasMoved || deltaDays !== 0;
+
+      const shiftedStart = addDays(dragState.originalStart, deltaDays);
+      const shiftedEnd = dragState.isMilestone ? shiftedStart : addDays(dragState.originalEnd, deltaDays);
+
+      setPreviewDates((prev) => ({
+        ...prev,
+        [dragState.taskId]: { start: shiftedStart, end: shiftedEnd },
+      }));
+    };
+
+    const handleMouseUp = () => {
+      const dragState = dragStateRef.current;
+      if (!dragState) return;
+
+      const finalPreview = previewDates[dragState.taskId];
+      if (dragState.hasMoved && finalPreview) {
+        onTaskDateChange?.(dragState.taskId, finalPreview.start, finalPreview.end);
+      }
+
+      setDraggingTaskId(null);
+      dragStateRef.current = null;
+      setPreviewDates((prev) => {
+        const next = { ...prev };
+        delete next[dragState.taskId];
+        return next;
+      });
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [draggingTaskId, dayWidth, onTaskDateChange, previewDates]);
 
   // Build month and week headers
   const months = useMemo(() => {
@@ -171,8 +238,11 @@ export const GanttChart: React.FC<GanttChartProps> = ({ nodes, expandedNodes, ex
     const positions: Record<string, { leftX: number; rightX: number; centerY: number }> = {};
     
     const processTask = (task: Task) => {
-      const taskStart = new Date(task.start);
-      const taskEnd = task.isMilestone ? taskStart : new Date(task.end);
+      const preview = previewDates[task.id];
+      const viewStart = preview?.start || task.start;
+      const viewEnd = preview?.end || task.end;
+      const taskStart = new Date(viewStart);
+      const taskEnd = task.isMilestone ? taskStart : new Date(viewEnd);
       
       const offsetDays = getDaysBetween(minDate, taskStart);
       const durationDays = task.isMilestone ? 0 : getDaysBetween(taskStart, taskEnd) + 1;
@@ -201,7 +271,7 @@ export const GanttChart: React.FC<GanttChartProps> = ({ nodes, expandedNodes, ex
     });
     
     return { taskPositions: positions, contentHeight: currentY };
-  }, [nodes, expandedNodes, expandedTasks, minDate, dayWidth]);
+  }, [nodes, expandedNodes, expandedTasks, minDate, dayWidth, previewDates]);
 
   // Generate SVG lines for dependencies recursively
   const renderDependencyLines = () => {
@@ -273,16 +343,50 @@ export const GanttChart: React.FC<GanttChartProps> = ({ nodes, expandedNodes, ex
           {task.isMilestone ? (
             // Milestone Rendering (Diamond)
             <div 
-              onClick={() => onTaskClick?.(task)}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                dragStateRef.current = {
+                  taskId: task.id,
+                  startX: e.clientX,
+                  originalStart: task.start,
+                  originalEnd: task.end,
+                  isMilestone: true,
+                  lastDeltaDays: 0,
+                  hasMoved: false,
+                };
+                setDraggingTaskId(task.id);
+              }}
+              onClick={() => {
+                if (dragStateRef.current?.hasMoved) return;
+                onTaskClick?.(task);
+              }}
               className="absolute w-4 h-4 bg-yellow-500 transform rotate-45 shadow-sm border border-yellow-600 z-10 cursor-pointer"
               style={{ left: `${pos.leftX - 8}px` }} // center diamond
             />
           ) : (
             // Standard Task Bar
             <div
-              onClick={() => onTaskClick?.(task)}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                dragStateRef.current = {
+                  taskId: task.id,
+                  startX: e.clientX,
+                  originalStart: task.start,
+                  originalEnd: task.end,
+                  isMilestone: !!task.isMilestone,
+                  lastDeltaDays: 0,
+                  hasMoved: false,
+                };
+                setDraggingTaskId(task.id);
+              }}
+              onClick={() => {
+                if (dragStateRef.current?.hasMoved) return;
+                onTaskClick?.(task);
+              }}
               className={clsx(
-                "absolute h-6 rounded-md shadow-sm border border-black/10 dark:border-white/10 z-10 cursor-pointer",
+                "absolute h-6 rounded-md shadow-sm border border-black/10 dark:border-white/10 z-10 cursor-grab active:cursor-grabbing",
                 task.subtasks && task.subtasks.length > 0 ? "bg-zinc-600 dark:bg-zinc-400" : getStatusColor(task.status)
               )}
               style={{ left: `${pos.leftX}px`, width: `${pos.rightX - pos.leftX}px` }}
