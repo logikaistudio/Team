@@ -20,11 +20,22 @@ type RoleItem = {
   description?: string;
 };
 
+type PermissionItem = {
+  id: string;
+  module: string;
+  action: string;
+  code: string;
+  description?: string;
+};
+
 export const UserRoleManagementPage: React.FC = () => {
   const [users, setUsers] = useState<ManagedUser[]>([]);
   const [roles, setRoles] = useState<RoleItem[]>([]);
+  const [permissions, setPermissions] = useState<PermissionItem[]>([]);
   const [loading, setLoading] = useState(false);
+  const [savingPermissions, setSavingPermissions] = useState(false);
   const [error, setError] = useState('');
+  const [infoMessage, setInfoMessage] = useState('');
 
   const [newUserName, setNewUserName] = useState('');
   const [newUserEmail, setNewUserEmail] = useState('');
@@ -36,20 +47,48 @@ export const UserRoleManagementPage: React.FC = () => {
   const [newRoleCode, setNewRoleCode] = useState('');
   const [newRoleDescription, setNewRoleDescription] = useState('');
 
+  const [selectedRoleId, setSelectedRoleId] = useState('');
+  const [selectedPermissionCodes, setSelectedPermissionCodes] = useState<string[]>([]);
+
   const roleOptions = useMemo(() => roles.map((r) => r.code), [roles]);
+
+  const editableRoles = useMemo(() => roles.filter((r) => Boolean(r.tenantId)), [roles]);
+
+  const selectedRole = useMemo(
+    () => roles.find((r) => r.id === selectedRoleId) || null,
+    [roles, selectedRoleId]
+  );
+
+  const groupedPermissions = useMemo(() => {
+    return permissions.reduce<Record<string, PermissionItem[]>>((acc, item) => {
+      if (!acc[item.module]) {
+        acc[item.module] = [];
+      }
+      acc[item.module].push(item);
+      return acc;
+    }, {});
+  }, [permissions]);
 
   const loadData = async () => {
     setLoading(true);
     setError('');
     try {
-      const [usersRes, rolesRes] = await Promise.all([
+      const [usersRes, rolesRes, permissionsRes] = await Promise.all([
         request<ManagedUser[]>('/management/users'),
         request<RoleItem[]>('/management/roles'),
+        request<PermissionItem[]>('/management/permissions'),
       ]);
       setUsers(usersRes);
       setRoles(rolesRes);
+      setPermissions(permissionsRes);
       if (!newUserRoleCode && rolesRes.length > 0) {
         setNewUserRoleCode(rolesRes[0].code);
+      }
+      const firstEditableRole = rolesRes.find((role) => Boolean(role.tenantId));
+      if (firstEditableRole) {
+        setSelectedRoleId((prev) => prev || firstEditableRole.id);
+      } else {
+        setSelectedRoleId('');
       }
     } catch (err: any) {
       setError(err.message || 'Failed to load users and roles');
@@ -58,9 +97,27 @@ export const UserRoleManagementPage: React.FC = () => {
     }
   };
 
+  const loadRolePermissions = async (roleId: string) => {
+    if (!roleId) {
+      setSelectedPermissionCodes([]);
+      return;
+    }
+    setError('');
+    try {
+      const response = await request<{ roleId: string; permissionCodes: string[] }>(`/management/roles/${roleId}/permissions`);
+      setSelectedPermissionCodes(response.permissionCodes || []);
+    } catch (err: any) {
+      setError(err.message || 'Failed to load role permissions');
+    }
+  };
+
   useEffect(() => {
     loadData();
   }, []);
+
+  useEffect(() => {
+    loadRolePermissions(selectedRoleId);
+  }, [selectedRoleId]);
 
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -133,9 +190,40 @@ export const UserRoleManagementPage: React.FC = () => {
       setNewRoleName('');
       setNewRoleCode('');
       setNewRoleDescription('');
+      setInfoMessage('Role created. You can now configure menu and function permissions below.');
       await loadData();
     } catch (err: any) {
       setError(err.message || 'Failed to create role');
+    }
+  };
+
+  const togglePermission = (code: string) => {
+    setSelectedPermissionCodes((prev) =>
+      prev.includes(code)
+        ? prev.filter((item) => item !== code)
+        : [...prev, code]
+    );
+  };
+
+  const handleSaveRolePermissions = async () => {
+    if (!selectedRoleId) {
+      setError('Please select a tenant role first.');
+      return;
+    }
+
+    setSavingPermissions(true);
+    setError('');
+    setInfoMessage('');
+    try {
+      await request<{ roleId: string; permissionCodes: string[] }>(`/management/roles/${selectedRoleId}/permissions`, {
+        method: 'PUT',
+        body: JSON.stringify({ permissionCodes: selectedPermissionCodes }),
+      });
+      setInfoMessage('Role menu and function permissions updated successfully.');
+    } catch (err: any) {
+      setError(err.message || 'Failed to save role permissions');
+    } finally {
+      setSavingPermissions(false);
     }
   };
 
@@ -149,6 +237,12 @@ export const UserRoleManagementPage: React.FC = () => {
       {error && (
         <div className="p-3 rounded-lg border border-red-300 bg-red-50 text-red-700 text-sm">
           {error}
+        </div>
+      )}
+
+      {infoMessage && (
+        <div className="p-3 rounded-lg border border-emerald-300 bg-emerald-50 text-emerald-700 text-sm">
+          {infoMessage}
         </div>
       )}
 
@@ -314,6 +408,62 @@ export const UserRoleManagementPage: React.FC = () => {
                 Create Role
               </button>
             </form>
+          </div>
+
+          <div className="bg-white dark:bg-[#0c0c0e] border border-zinc-200 dark:border-zinc-800 rounded-xl p-4">
+            <h2 className="font-semibold text-sm mb-3">Role Menu & Function Access</h2>
+
+            {editableRoles.length === 0 ? (
+              <p className="text-xs text-zinc-500">Create a tenant role first to configure menu and function access.</p>
+            ) : (
+              <div className="space-y-3">
+                <select
+                  value={selectedRoleId}
+                  onChange={(e) => setSelectedRoleId(e.target.value)}
+                  className="w-full px-3 py-2 rounded border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-sm"
+                >
+                  {editableRoles.map((role) => (
+                    <option key={role.id} value={role.id}>
+                      {role.name} ({role.code})
+                    </option>
+                  ))}
+                </select>
+
+                <div className="max-h-72 overflow-y-auto border border-zinc-200 dark:border-zinc-800 rounded-lg p-3 space-y-3">
+                  {Object.entries(groupedPermissions).map(([moduleName, modulePermissions]) => (
+                    <div key={moduleName} className="space-y-2">
+                      <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                        Menu: {moduleName}
+                      </div>
+                      <div className="space-y-1">
+                        {modulePermissions.map((permission) => (
+                          <label key={permission.code} className="flex items-center justify-between gap-3 text-xs">
+                            <span>
+                              Function: {permission.action}
+                              {permission.description ? ` - ${permission.description}` : ''}
+                            </span>
+                            <input
+                              type="checkbox"
+                              checked={selectedPermissionCodes.includes(permission.code)}
+                              onChange={() => togglePermission(permission.code)}
+                            />
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleSaveRolePermissions}
+                  disabled={savingPermissions || !selectedRole || !selectedRole.tenantId}
+                  className="w-full px-3 py-2 rounded bg-brand-600 text-white text-sm disabled:opacity-60"
+                >
+                  {savingPermissions ? 'Saving...' : 'Save Menu & Function Access'}
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>

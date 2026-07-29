@@ -1,5 +1,5 @@
 import { IUserRepository } from './user.repository.interface';
-import { User, Role } from '../domain/user.entity';
+import { User, Role, Permission } from '../domain/user.entity';
 import { pool } from '../config/database';
 
 export class UserRepository implements IUserRepository {
@@ -135,6 +135,39 @@ export class UserRepository implements IUserRepository {
     return rows;
   }
 
+  async findRoleById(roleId: string): Promise<Role | null> {
+    const query = `
+      SELECT id, tenant_id AS "tenantId", name, code, description
+      FROM roles
+      WHERE id = $1
+      LIMIT 1
+    `;
+    const { rows } = await pool.query(query, [roleId]);
+    return rows.length ? rows[0] : null;
+  }
+
+  async listPermissions(): Promise<Permission[]> {
+    const query = `
+      SELECT id, module, action, code, description
+      FROM permissions
+      ORDER BY module ASC, action ASC
+    `;
+    const { rows } = await pool.query(query);
+    return rows;
+  }
+
+  async getRolePermissionCodes(roleId: string): Promise<string[]> {
+    const query = `
+      SELECT p.code
+      FROM role_permissions rp
+      JOIN permissions p ON p.id = rp.permission_id
+      WHERE rp.role_id = $1
+      ORDER BY p.code ASC
+    `;
+    const { rows } = await pool.query(query, [roleId]);
+    return rows.map((r) => r.code);
+  }
+
   async getPermissions(userId: string): Promise<string[]> {
     const query = `
       SELECT DISTINCT p.code
@@ -190,5 +223,54 @@ export class UserRepository implements IUserRepository {
     const values = [role.tenantId, role.name, role.code, role.description];
     const { rows } = await pool.query(query, values);
     return rows[0];
+  }
+
+  async setRolePermissions(roleId: string, permissionCodes: string[], tenantId: string): Promise<void> {
+    const role = await this.findRoleById(roleId);
+    if (!role) {
+      throw new Error('Role not found');
+    }
+    if (!role.tenantId || role.tenantId !== tenantId) {
+      throw new Error('Only tenant-owned roles can be updated');
+    }
+
+    if (permissionCodes.length === 0) {
+      await pool.query('DELETE FROM role_permissions WHERE role_id = $1', [roleId]);
+      return;
+    }
+
+    const permissionQuery = `
+      SELECT id, code
+      FROM permissions
+      WHERE code = ANY($1::text[])
+    `;
+    const permissionResult = await pool.query(permissionQuery, [permissionCodes]);
+    const foundCodes = new Set<string>(permissionResult.rows.map((row) => row.code));
+    const missingCodes = permissionCodes.filter((code) => !foundCodes.has(code));
+    if (missingCodes.length > 0) {
+      throw new Error(`Unknown permission codes: ${missingCodes.join(', ')}`);
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('DELETE FROM role_permissions WHERE role_id = $1', [roleId]);
+      for (const permission of permissionResult.rows) {
+        await client.query(
+          `
+          INSERT INTO role_permissions (role_id, permission_id)
+          VALUES ($1, $2)
+          ON CONFLICT DO NOTHING
+          `,
+          [roleId, permission.id]
+        );
+      }
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 }

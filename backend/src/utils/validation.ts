@@ -94,4 +94,9 @@ export const roleCreateSchema = z.object({
     .min(2, 'Role code must be at least 2 characters')
     .regex(/^[a-z0-9_]+$/, 'Role code can only contain lowercase letters, numbers, and underscores'),
   description: z.string().optional(),
+  permissionCodes: z.array(z.string().min(3)).optional(),
+});
+
+export const rolePermissionsUpdateSchema = z.object({
+  permissionCodes: z.array(z.string().min(3)).default([]),
 });

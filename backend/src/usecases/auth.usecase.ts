@@ -317,4 +317,23 @@ export class AuthUseCase {
     }
     // Stub for Email Service invocation (SMTP send code)
   }
+
+  async changePassword(userId: string, currentPassword: string, newPassword: string): Promise<void> {
+    const user = await this.userRepository.findById(userId);
+    if (!user || !user.passwordHash) {
+      throw new UnauthorizedError('User account is invalid');
+    }
+
+    const isMatch = await comparePassword(currentPassword, user.passwordHash);
+    if (!isMatch) {
+      throw new UnauthorizedError('Current password is incorrect');
+    }
+
+    if (newPassword.length < 6) {
+      throw new BadRequestError('New password must be at least 6 characters');
+    }
+
+    const nextHash = await hashPassword(newPassword);
+    await this.userRepository.update(userId, { passwordHash: nextHash });
+  }
 }

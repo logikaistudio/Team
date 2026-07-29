@@ -6,7 +6,10 @@ import {
   Upload,
   Users,
   Pencil,
-  Trash2
+  Trash2,
+  Eye,
+  EyeOff,
+  KeyRound
 } from 'lucide-react';
 import { request } from '../services/api';
 
@@ -504,6 +507,50 @@ Project Status: CAUTION (Health score: 78/100)
 // 5. SETTINGS & BILLING PAGE
 // ============================================================================
 export const SettingsPage: React.FC = () => {
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [passwordMessage, setPasswordMessage] = useState('');
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPasswordMessage('');
+
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      setPasswordMessage('Semua field password wajib diisi.');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setPasswordMessage('Konfirmasi password baru tidak cocok.');
+      return;
+    }
+
+    setChangingPassword(true);
+    try {
+      await request<{ message: string }>('/auth/change-password', {
+        method: 'POST',
+        body: JSON.stringify({
+          currentPassword,
+          newPassword,
+          confirmPassword,
+        }),
+      });
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      setPasswordMessage('Password berhasil diubah.');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Gagal mengubah password.';
+      setPasswordMessage(message);
+    } finally {
+      setChangingPassword(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div>
@@ -569,6 +616,76 @@ export const SettingsPage: React.FC = () => {
           </div>
         </div>
 
+      </div>
+
+      <div className="bg-white dark:bg-[#0c0c0e] border border-zinc-200 dark:border-zinc-800 p-6 rounded-xl max-w-2xl">
+        <h3 className="font-semibold text-sm mb-1">Ubah Password</h3>
+        <p className="text-xs text-zinc-500 mb-4">Gunakan tombol mata untuk melihat/menutup password agar tidak salah ketik.</p>
+
+        <form onSubmit={handleChangePassword} className="space-y-3">
+          <div>
+            <label className="text-xs font-semibold text-zinc-500 block mb-1">Password Saat Ini</label>
+            <div className="relative">
+              <KeyRound size={14} className="absolute left-3 top-3 text-zinc-400" />
+              <input
+                type={showCurrentPassword ? 'text' : 'password'}
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
+                className="w-full pl-9 pr-10 py-2 bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg text-sm"
+                placeholder="Masukkan password saat ini"
+              />
+              <button type="button" onClick={() => setShowCurrentPassword((v) => !v)} className="absolute right-2 top-2 p-1 text-zinc-500 hover:text-zinc-300">
+                {showCurrentPassword ? <EyeOff size={14} /> : <Eye size={14} />}
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold text-zinc-500 block mb-1">Password Baru</label>
+            <div className="relative">
+              <KeyRound size={14} className="absolute left-3 top-3 text-zinc-400" />
+              <input
+                type={showNewPassword ? 'text' : 'password'}
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                className="w-full pl-9 pr-10 py-2 bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg text-sm"
+                placeholder="Minimal 6 karakter"
+              />
+              <button type="button" onClick={() => setShowNewPassword((v) => !v)} className="absolute right-2 top-2 p-1 text-zinc-500 hover:text-zinc-300">
+                {showNewPassword ? <EyeOff size={14} /> : <Eye size={14} />}
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold text-zinc-500 block mb-1">Konfirmasi Password Baru</label>
+            <div className="relative">
+              <KeyRound size={14} className="absolute left-3 top-3 text-zinc-400" />
+              <input
+                type={showConfirmPassword ? 'text' : 'password'}
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                className="w-full pl-9 pr-10 py-2 bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg text-sm"
+                placeholder="Ulangi password baru"
+              />
+              <button type="button" onClick={() => setShowConfirmPassword((v) => !v)} className="absolute right-2 top-2 p-1 text-zinc-500 hover:text-zinc-300">
+                {showConfirmPassword ? <EyeOff size={14} /> : <Eye size={14} />}
+              </button>
+            </div>
+          </div>
+
+          {passwordMessage && (
+            <div className="text-xs text-zinc-500">{passwordMessage}</div>
+          )}
+
+          <button
+            type="submit"
+            disabled={changingPassword}
+            className="px-3 py-2 bg-brand-600 hover:bg-brand-500 disabled:opacity-60 text-white text-xs font-semibold rounded-lg"
+          >
+            {changingPassword ? 'Menyimpan...' : 'Simpan Password Baru'}
+          </button>
+        </form>
       </div>
     </div>
   );

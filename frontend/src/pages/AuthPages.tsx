@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { useStore } from '../store/useStore';
 import { request } from '../services/api';
-import { KeyRound, Mail, User, Building, Globe, ShieldAlert } from 'lucide-react';
+import { KeyRound, Mail, User, Building, Globe, ShieldAlert, Eye, EyeOff } from 'lucide-react';
 
 type LoginLocationState = {
   prefillTenantId?: string;
@@ -12,6 +12,7 @@ type LoginLocationState = {
 export const LoginPage: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [tenantId, setTenantId] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -122,13 +123,21 @@ export const LoginPage: React.FC = () => {
             <div className="relative">
               <KeyRound size={14} className="absolute left-3 top-3.5 text-zinc-500" />
               <input
-                type="password"
+                type={showPassword ? 'text' : 'password'}
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full pl-9 pr-4 py-2.5 bg-zinc-900 border border-zinc-800 rounded-lg text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-brand-500"
+                className="w-full pl-9 pr-10 py-2.5 bg-zinc-900 border border-zinc-800 rounded-lg text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-brand-500"
                 placeholder="••••••••"
               />
+              <button
+                type="button"
+                onClick={() => setShowPassword((v) => !v)}
+                className="absolute right-2 top-2 p-1 text-zinc-400 hover:text-zinc-200"
+                title={showPassword ? 'Hide password' : 'Show password'}
+              >
+                {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
+              </button>
             </div>
           </div>
 
@@ -158,6 +167,7 @@ export const RegisterPage: React.FC = () => {
   const [adminName, setAdminName] = useState('');
   const [adminEmail, setAdminEmail] = useState('');
   const [adminPassword, setAdminPassword] = useState('');
+  const [showAdminPassword, setShowAdminPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const navigate = useNavigate();
@@ -290,13 +300,21 @@ export const RegisterPage: React.FC = () => {
             <div className="relative">
               <KeyRound size={14} className="absolute left-3 top-3.5 text-zinc-500" />
               <input
-                type="password"
+                type={showAdminPassword ? 'text' : 'password'}
                 required
                 value={adminPassword}
                 onChange={(e) => setAdminPassword(e.target.value)}
-                className="w-full pl-9 pr-4 py-2.5 bg-zinc-900 border border-zinc-800 rounded-lg text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-brand-500"
+                className="w-full pl-9 pr-10 py-2.5 bg-zinc-900 border border-zinc-800 rounded-lg text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-brand-500"
                 placeholder="•••••••• (Min 6 characters)"
               />
+              <button
+                type="button"
+                onClick={() => setShowAdminPassword((v) => !v)}
+                className="absolute right-2 top-2 p-1 text-zinc-400 hover:text-zinc-200"
+                title={showAdminPassword ? 'Hide password' : 'Show password'}
+              >
+                {showAdminPassword ? <EyeOff size={14} /> : <Eye size={14} />}
+              </button>
             </div>
           </div>
 

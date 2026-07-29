@@ -4,6 +4,7 @@ import { UserRepository } from '../repositories/user.repository';
 import { TenantRepository } from '../repositories/tenant.repository';
 import { registerSchema, loginSchema } from '../utils/validation';
 import { BadRequestError } from '../utils/errors';
+import { authenticate } from '../middlewares/auth';
 
 export const authRouter = Router();
 
@@ -77,4 +78,29 @@ authRouter.post('/refresh-token', async (req: Request, res: Response, next: Next
 authRouter.post('/logout', (req: Request, res: Response) => {
   res.clearCookie('refreshToken');
   res.json({ message: 'Logged out successfully' });
+});
+
+authRouter.post('/change-password', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      throw new BadRequestError('Invalid user session');
+    }
+
+    const currentPassword = String(req.body?.currentPassword || '');
+    const newPassword = String(req.body?.newPassword || '');
+    const confirmPassword = String(req.body?.confirmPassword || '');
+
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      throw new BadRequestError('Current password, new password, and confirmation are required');
+    }
+    if (newPassword !== confirmPassword) {
+      throw new BadRequestError('Password confirmation does not match');
+    }
+
+    await authUseCase.changePassword(userId, currentPassword, newPassword);
+    res.json({ message: 'Password changed successfully' });
+  } catch (error) {
+    next(error);
+  }
 });

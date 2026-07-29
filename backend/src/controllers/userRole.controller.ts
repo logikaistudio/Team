@@ -7,6 +7,7 @@ import {
   userUpdateSchema,
   userPasswordUpdateSchema,
   roleCreateSchema,
+  rolePermissionsUpdateSchema,
 } from '../utils/validation';
 import { hashPassword } from '../utils/security';
 
@@ -50,6 +51,34 @@ userRoleRouter.get('/roles', async (req: Request, res: Response, next: NextFunct
     const tenantId = req.tenantId!;
     const roles = await userRepository.listRoles(tenantId);
     res.json(roles);
+  } catch (error) {
+    next(error);
+  }
+});
+
+userRoleRouter.get('/permissions', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    ensureManagementAccess(req);
+    const permissions = await userRepository.listPermissions();
+    res.json(permissions);
+  } catch (error) {
+    next(error);
+  }
+});
+
+userRoleRouter.get('/roles/:id/permissions', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    ensureManagementAccess(req);
+    const tenantId = req.tenantId!;
+    const roleId = req.params.id;
+
+    const role = await userRepository.findRoleById(roleId);
+    if (!role || (role.tenantId && role.tenantId !== tenantId)) {
+      throw new NotFoundError('Role not found');
+    }
+
+    const permissionCodes = await userRepository.getRolePermissionCodes(roleId);
+    res.json({ roleId, permissionCodes });
   } catch (error) {
     next(error);
   }
@@ -177,7 +206,7 @@ userRoleRouter.post('/roles', async (req: Request, res: Response, next: NextFunc
       throw new BadRequestError(check.error.errors.map((e) => e.message).join(', '));
     }
 
-    const { name, code, description } = check.data;
+    const { name, code, description, permissionCodes } = check.data;
     const existingRoles = await userRepository.listRoles(tenantId);
     if (existingRoles.some((r) => r.code === code && (r.tenantId === tenantId || !r.tenantId))) {
       throw new ConflictError('Role code already exists');
@@ -190,7 +219,41 @@ userRoleRouter.post('/roles', async (req: Request, res: Response, next: NextFunc
       description,
     });
 
+    if (permissionCodes) {
+      await userRepository.setRolePermissions(role.id, permissionCodes, tenantId);
+    }
+
     res.status(201).json(role);
+  } catch (error) {
+    next(error);
+  }
+});
+
+userRoleRouter.put('/roles/:id/permissions', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    ensureManagementAccess(req);
+    const tenantId = req.tenantId!;
+    const roleId = req.params.id;
+
+    const check = rolePermissionsUpdateSchema.safeParse(req.body);
+    if (!check.success) {
+      throw new BadRequestError(check.error.errors.map((e) => e.message).join(', '));
+    }
+
+    const role = await userRepository.findRoleById(roleId);
+    if (!role || role.tenantId !== tenantId) {
+      throw new NotFoundError('Role not found or not editable');
+    }
+
+    try {
+      await userRepository.setRolePermissions(roleId, check.data.permissionCodes, tenantId);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to update role permissions';
+      throw new BadRequestError(message);
+    }
+
+    const permissionCodes = await userRepository.getRolePermissionCodes(roleId);
+    res.json({ roleId, permissionCodes });
   } catch (error) {
     next(error);
   }
