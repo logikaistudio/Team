@@ -411,12 +411,6 @@ export const SafetyPage: React.FC = () => {
         )}
       </div>
 
-      <div className="hidden">
-        <button className="flex items-center gap-1.5 px-3 py-1.5 bg-brand-600 hover:bg-brand-500 text-white text-xs font-semibold rounded-lg">
-          <ShieldAlert size={14} />
-          <span>Report Incident</span>
-        </button>
-      </div>
     </div>
   );
 };
