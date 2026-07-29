@@ -77,6 +77,7 @@ export const WBSPage: React.FC = () => {
       description: task.description,
       start: toDateInputValue(plannedStartRaw),
       end: toDateInputValue(plannedEndRaw),
+      weight: Number(task.weight ?? task.task_weight ?? 0),
       cost: task.plannedCost ?? task.planned_cost ?? task.cost ?? 0,
       progress: task.progressPercent ?? task.progress_percent ?? task.progress ?? 0,
       status: task.status,
@@ -981,16 +982,26 @@ export const WBSPage: React.FC = () => {
       } as any;
 
       if (!isUuid(editingTask.id)) {
+        const localUpdated = normalizeTask({
+          ...editingTask,
+          ...payload,
+          plannedStart: payload.plannedStart,
+          plannedEnd: payload.plannedEnd,
+          plannedCost: payload.plannedCost,
+          progressPercent: payload.progressPercent,
+          dependencies: payload.dependencies,
+        });
         setNodes(nodes.map(n => ({
           ...n,
-          tasks: n.tasks.map(t => t.id === editingTask.id ? { ...t, ...payload } as Task : t)
+          tasks: upsertTaskInTree(n.tasks, localUpdated)
         })));
         setEditingTask(null);
         return;
       }
 
       const updated = await request<Task>(`/projects/tasks/${editingTask.id}`, { method: 'PUT', body: JSON.stringify(payload) });
-      setNodes(nodes.map(n => ({ ...n, tasks: n.tasks.map(t => t.id === updated.id ? { ...t, ...updated } : t) })));
+      const normalizedUpdated = normalizeTask(updated);
+      setNodes(nodes.map(n => ({ ...n, tasks: upsertTaskInTree(n.tasks, normalizedUpdated) })));
       setEditingTask(null);
     } catch (err) {
       console.error('Update task failed', err);
@@ -1003,13 +1014,13 @@ export const WBSPage: React.FC = () => {
     if (!confirm('Delete this task?')) return;
     try {
       if (!isUuid(editingTask.id)) {
-        setNodes(nodes.map(n => ({ ...n, tasks: n.tasks.filter(t => t.id !== editingTask.id) })));
+        setNodes(nodes.map(n => ({ ...n, tasks: removeTaskFromTree(n.tasks, editingTask.id) })));
         setEditingTask(null);
         return;
       }
 
       await request<void>(`/projects/tasks/${editingTask.id}`, { method: 'DELETE' });
-      setNodes(nodes.map(n => ({ ...n, tasks: n.tasks.filter(t => t.id !== editingTask.id) })));
+      setNodes(nodes.map(n => ({ ...n, tasks: removeTaskFromTree(n.tasks, editingTask.id) })));
       setEditingTask(null);
     } catch (err) {
       console.error('Delete task failed', err);
@@ -1027,6 +1038,29 @@ export const WBSPage: React.FC = () => {
       }
       return task;
     });
+  };
+
+  const upsertTaskInTree = (tasks: Task[], updatedTask: Task): Task[] => {
+    return tasks.map((task) => {
+      if (task.id === updatedTask.id) {
+        return { ...task, ...updatedTask };
+      }
+      if (task.subtasks && task.subtasks.length > 0) {
+        return { ...task, subtasks: upsertTaskInTree(task.subtasks, updatedTask) };
+      }
+      return task;
+    });
+  };
+
+  const removeTaskFromTree = (tasks: Task[], taskId: string): Task[] => {
+    return tasks
+      .filter((task) => task.id !== taskId)
+      .map((task) => {
+        if (task.subtasks && task.subtasks.length > 0) {
+          return { ...task, subtasks: removeTaskFromTree(task.subtasks, taskId) };
+        }
+        return task;
+      });
   };
 
   const handleTaskDateChangeFromCalendar = async (taskId: string, start: string, end: string) => {
@@ -1079,7 +1113,7 @@ export const WBSPage: React.FC = () => {
       setNodes((prev) =>
         prev.map((node) => ({
           ...node,
-          tasks: node.tasks.map((t) => (t.id === taskId ? normalized : t)),
+          tasks: upsertTaskInTree(node.tasks, normalized),
         }))
       );
       setEditingTask((prev) => (prev && prev.id === taskId ? normalized : prev));
@@ -1117,6 +1151,9 @@ export const WBSPage: React.FC = () => {
     let displayStart = task.start;
     let displayEnd = task.end;
     let taskDuration = calculateTaskDuration(task.start, task.end);
+    const liveProgress = editingTask?.id === task.id && editTaskForm ? editTaskForm.progress : task.progress;
+    const taskWeight = Number((task as any).weight ?? 0);
+    const weightedEarned = (taskWeight * Math.max(0, Math.min(100, Number(liveProgress) || 0))) / 100;
     
     if (hasSubtasks) {
       const childDates = getChildTasksDateRange(task);
@@ -1136,12 +1173,12 @@ export const WBSPage: React.FC = () => {
               (async () => {
                 try {
                   if (!isUuid(task.id)) {
-                    setNodes(nodes.map(n => ({ ...n, tasks: n.tasks.filter(t => t.id !== task.id) })));
+                    setNodes(nodes.map(n => ({ ...n, tasks: removeTaskFromTree(n.tasks, task.id) })));
                     return;
                   }
 
                   await request<void>(`/projects/tasks/${task.id}`, { method: 'DELETE' });
-                  setNodes(nodes.map(n => ({ ...n, tasks: n.tasks.filter(t => t.id !== task.id) })));
+                  setNodes(nodes.map(n => ({ ...n, tasks: removeTaskFromTree(n.tasks, task.id) })));
                 } catch (err) {
                   console.error('Delete task failed', err);
                   alert('Failed to delete task');
@@ -1195,11 +1232,18 @@ export const WBSPage: React.FC = () => {
             {task.isMilestone ? 'MS' : `${taskDuration}d`}
           </div>
           <div className="w-[35px] text-center shrink-0">
-            <div className="flex items-center justify-center gap-1.5">
-              {getStatusIcon(task.status, task.isMilestone)}
+            <div className="flex flex-col items-center justify-center leading-tight">
+              <div className="flex items-center justify-center gap-1">
+                {getStatusIcon(task.status, task.isMilestone)}
+                {!task.isMilestone && (
+                  <span className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 min-w-[20px]">
+                    {liveProgress}%
+                  </span>
+                )}
+              </div>
               {!task.isMilestone && (
-                <span className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 min-w-[20px]">
-                  {task.progress}%
+                <span className="text-[9px] font-bold text-brand-600 dark:text-brand-400">
+                  {weightedEarned.toFixed(2)}
                 </span>
               )}
             </div>

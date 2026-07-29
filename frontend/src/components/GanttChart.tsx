@@ -14,6 +14,7 @@ export interface Task {
   description?: string;
   start: string; // YYYY-MM-DD
   end: string;
+  weight?: number;
   cost: number;
   progress: number;
   status: 'not_started' | 'in_progress' | 'completed' | 'delayed';
@@ -330,16 +331,34 @@ export const GanttChart: React.FC<GanttChartProps> = ({ nodes, expandedNodes, ex
             const endY = targetPos.centerY;
             const pathD = `M ${startX} ${startY} L ${startX + Math.min(20, dayWidth*2)} ${startY} L ${startX + Math.min(20, dayWidth*2)} ${endY} L ${endX} ${endY}`;
 
+            const elbowX = startX + Math.min(20, dayWidth * 2);
+            const midX = (elbowX + endX) / 2;
+            const midY = endY;
+
             lines.push(
-              <path
-                key={`${task.id}-${dep.taskId}-${dep.type}`}
-                d={pathD}
-                fill="none"
-                stroke="#3b82f6"
-                strokeWidth="1.5"
-                strokeOpacity="0.6"
-                markerEnd="url(#arrowhead)"
-              />
+              <g key={`${task.id}-${dep.taskId}-${dep.type}`}>
+                <path
+                  d={pathD}
+                  fill="none"
+                  stroke="#2563eb"
+                  strokeWidth="1.8"
+                  strokeOpacity="0.85"
+                  markerEnd="url(#arrowhead)"
+                />
+                <circle cx={startX} cy={startY} r="2.5" fill="#1d4ed8" fillOpacity="0.9" />
+                <circle cx={endX} cy={endY} r="2.5" fill="#2563eb" fillOpacity="0.95" />
+                <text
+                  x={midX}
+                  y={midY - 4}
+                  textAnchor="middle"
+                  fontSize="8"
+                  fill="#1e3a8a"
+                  fillOpacity="0.9"
+                  style={{ userSelect: 'none' }}
+                >
+                  {dep.type}
+                </text>
+              </g>
             );
           });
         }
@@ -521,10 +540,10 @@ export const GanttChart: React.FC<GanttChartProps> = ({ nodes, expandedNodes, ex
         </div>
 
         {/* SVG Dependency Lines */}
-        <svg className="absolute inset-0 z-10 pointer-events-none" style={{ width: daysArray.length * dayWidth, height: contentHeight }}>
+        <svg className="absolute inset-0 z-30 pointer-events-none" style={{ width: daysArray.length * dayWidth, height: contentHeight }}>
           <defs>
             <marker id="arrowhead" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
-              <polygon points="0 0, 6 3, 0 6" fill="#3b82f6" fillOpacity="0.6" />
+              <polygon points="0 0, 6 3, 0 6" fill="#2563eb" fillOpacity="0.85" />
             </marker>
           </defs>
           {renderDependencyLines()}
