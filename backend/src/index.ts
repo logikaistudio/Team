@@ -25,10 +25,6 @@ app.use('/api/analytics', analyticsRouter);
 app.use('/api/enterprise', enterpriseRouter);
 app.use('/api/management', userRoleRouter);
 
-
-// Serve uploaded documents statically
-app.use('/uploads', express.static('uploads'));
-
 // Swagger docs are optional in serverless runtime; avoid crashing when json import/bundle differs.
 let swaggerDocument: any = null;
 try {

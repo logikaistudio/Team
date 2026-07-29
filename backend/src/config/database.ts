@@ -30,6 +30,10 @@ function isLikelyWrongSupabaseHost(hostname: string): boolean {
   return /^postgres\.[a-z0-9-]+$/i.test(hostname);
 }
 
+function isSupabaseHostname(hostname: string): boolean {
+  return /(^|\.)supabase\.co$/i.test(hostname) || /(^|\.)supabase\.com$/i.test(hostname);
+}
+
 // ─── Resolve the connection string ───────────────────────────────────────────
 //
 // Priority (highest → lowest):
@@ -71,11 +75,21 @@ const connectionString: string = validConnectionCandidate?.value || '';
 
 const hasDatabaseUrl = Boolean(connectionString);
 
+if (isProduction && !hasDatabaseUrl) {
+  throw new Error('[DB] Production requires SUPABASE_DB_URL (or DATABASE_URL) pointing to Supabase.');
+}
+
 // Detect if the URL still points to the direct DB host (db.*.supabase.co).
 // Vercel cannot reach that host — warn loudly so it shows up in function logs.
 if (isProduction && hasDatabaseUrl) {
   try {
     const parsed = new URL(connectionString);
+    if (!isSupabaseHostname(parsed.hostname)) {
+      throw new Error(
+        `[DB] Non-Supabase database host is blocked in production: ${parsed.hostname}. ` +
+        'Set SUPABASE_DB_URL to your Supabase Transaction Pooler connection string.'
+      );
+    }
     if (isLikelyWrongSupabaseHost(parsed.hostname)) {
       logger.error(
         '[DB] DATABASE_URL host looks like a Supabase username, not a host ' +
@@ -95,7 +109,7 @@ if (isProduction && hasDatabaseUrl) {
       );
     }
   } catch {
-    // Non-URL format – ignore
+    throw new Error('[DB] Invalid production database URL. Use Supabase Transaction Pooler URL.');
   }
 }
 

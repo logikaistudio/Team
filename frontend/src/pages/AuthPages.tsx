@@ -26,12 +26,6 @@ export const LoginPage: React.FC = () => {
   useEffect(() => {
     if (locationState.prefillTenantId) {
       setTenantId(locationState.prefillTenantId);
-      localStorage.setItem('epcs_last_tenant_id', locationState.prefillTenantId);
-    } else {
-      const cachedTenantId = localStorage.getItem('epcs_last_tenant_id');
-      if (cachedTenantId) {
-        setTenantId(cachedTenantId);
-      }
     }
 
     if (locationState.prefillEmail) {
@@ -55,9 +49,6 @@ export const LoginPage: React.FC = () => {
         method: 'POST',
         body: JSON.stringify({ tenantId: tenant || undefined, email, password }),
       });
-      if (tenant) {
-        localStorage.setItem('epcs_last_tenant_id', tenant);
-      }
       setAuth(res.user, res.accessToken);
       navigate('/');
     } catch (err: any) {
@@ -196,9 +187,6 @@ export const RegisterPage: React.FC = () => {
         }),
       });
       const createdTenantId = res.user?.tenantId;
-      if (createdTenantId) {
-        localStorage.setItem('epcs_last_tenant_id', createdTenantId);
-      }
 
       navigate('/login', {
         state: {
