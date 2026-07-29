@@ -5,8 +5,8 @@ import { pool } from '../config/database';
 export class DocumentRepository implements IDocumentRepository {
   async createDocument(document: Omit<ProjectDocument, 'id' | 'createdAt'>): Promise<ProjectDocument> {
     const query = `
-      INSERT INTO documents (tenant_id, project_id, name, type, size, file_path, uploaded_by)
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      INSERT INTO documents (tenant_id, project_id, name, type, size, file_path, uploaded_by, file_data)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
       RETURNING id, tenant_id AS "tenantId", project_id AS "projectId", name, type, size, file_path AS "filePath", uploaded_by AS "uploadedBy", created_at AS "createdAt"
     `;
     const values = [
@@ -16,7 +16,8 @@ export class DocumentRepository implements IDocumentRepository {
       document.type,
       document.size,
       document.filePath,
-      document.uploadedBy
+      document.uploadedBy,
+      document.fileData || null,
     ];
     const { rows } = await pool.query(query, values);
     return rows[0];
@@ -36,6 +37,17 @@ export class DocumentRepository implements IDocumentRepository {
   async getDocumentById(tenantId: string, documentId: string): Promise<ProjectDocument | null> {
     const query = `
       SELECT id, tenant_id AS "tenantId", project_id AS "projectId", name, type, size, file_path AS "filePath", uploaded_by AS "uploadedBy", created_at AS "createdAt"
+      FROM documents
+      WHERE tenant_id = $1 AND id = $2
+    `;
+    const { rows } = await pool.query(query, [tenantId, documentId]);
+    return rows[0] || null;
+  }
+
+  async getDocumentBinaryById(tenantId: string, documentId: string): Promise<ProjectDocument | null> {
+    const query = `
+      SELECT id, tenant_id AS "tenantId", project_id AS "projectId", name, type, size, file_path AS "filePath",
+             uploaded_by AS "uploadedBy", file_data AS "fileData", created_at AS "createdAt"
       FROM documents
       WHERE tenant_id = $1 AND id = $2
     `;

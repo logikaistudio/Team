@@ -10,6 +10,8 @@ type Project = {
   location?: string;
   budget?: number;
   currency?: string;
+  hasBaselineSchedule?: boolean;
+  hasBaselineWbs?: boolean;
   description?: string;
 };
 
@@ -106,17 +108,23 @@ export const ProjectsPage: React.FC = () => {
                 <th className="p-3">Name</th>
                 <th className="p-3">Location</th>
                 <th className="p-3">Budget</th>
+                <th className="p-3">Baseline</th>
                 <th className="p-3">Actions</th>
               </tr>
             </thead>
             <tbody>
-              {loading ? <tr><td colSpan={5} className="p-4">Loading...</td></tr> : (
+              {loading ? <tr><td colSpan={6} className="p-4">Loading...</td></tr> : (
                 projects.map(p => (
                   <tr key={p.id} className="border-t">
                     <td className="p-3 font-mono">{p.code}</td>
                     <td className="p-3 font-medium">{p.name}</td>
                     <td className="p-3">{p.location}</td>
                     <td className="p-3">{p.budget ? `${p.currency || 'USD'} ${p.budget}` : '-'}</td>
+                    <td className="p-3">
+                      {(p.hasBaselineSchedule && p.hasBaselineWbs)
+                        ? <span className="px-2 py-0.5 rounded-full bg-green-500/10 text-green-600 text-xs font-semibold">Connected</span>
+                        : <span className="px-2 py-0.5 rounded-full bg-yellow-500/10 text-yellow-600 text-xs font-semibold">Pending</span>}
+                    </td>
                     <td className="p-3">
                       <div className="flex gap-2">
                         <button onClick={() => openEdit(p)} className="p-1.5 bg-zinc-100 rounded"><Edit2 size={14} /></button>

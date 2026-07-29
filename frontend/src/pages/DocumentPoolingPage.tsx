@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Upload, Download, Trash2, FileText, File, FileSpreadsheet, FileImage, FolderOpen } from 'lucide-react';
 import { request } from '../services/api';
+import { useStore } from '../store/useStore';
 
 interface Project {
   id: string;
@@ -116,6 +117,30 @@ export const DocumentPoolingPage: React.FC = () => {
 
   const selectedProject = projects.find(p => p.id === selectedProjectId);
 
+  const handleDownload = async (doc: ProjectDocument) => {
+    try {
+      const token = useStore.getState().accessToken;
+      const response = await fetch(doc.filePath, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!response.ok) {
+        throw new Error('Download failed');
+      }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = doc.name;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Failed to download document', error);
+      alert('Gagal mengunduh dokumen.');
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -211,16 +236,13 @@ export const DocumentPoolingPage: React.FC = () => {
                   </td>
                   <td className="p-3 text-center">
                     <div className="flex justify-center gap-2">
-                      <a
-                        href={doc.filePath}
-                        download={doc.name}
-                        target="_blank"
-                        rel="noreferrer"
+                      <button
+                        onClick={() => handleDownload(doc)}
                         className="p-1.5 text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-500/10 rounded transition-colors"
                         title="Download"
                       >
                         <Download size={14} />
-                      </a>
+                      </button>
                       <button
                         onClick={() => handleDelete(doc.id)}
                         className="p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded transition-colors"

@@ -82,10 +82,13 @@ if (process.env.NODE_ENV !== 'test' && !isVercelRuntime) {
               size INTEGER NOT NULL,
               file_path VARCHAR(500) NOT NULL,
               uploaded_by UUID,
+              file_data BYTEA,
               created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
               FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
             );
           `);
+        } else {
+          await pool.query(`ALTER TABLE documents ADD COLUMN IF NOT EXISTS file_data BYTEA`);
         }
 
         logger.info('Database schema verified (including documents table).');

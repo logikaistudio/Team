@@ -16,6 +16,7 @@ type Project = {
   id: string;
   code: string;
   name: string;
+  currency?: string;
 };
 
 type EVMResult = {
@@ -80,6 +81,7 @@ export const SCurvePage: React.FC = () => {
   }, [selectedProjectId]);
 
   const selectedProject = projects.find((p) => p.id === selectedProjectId) || null;
+  const selectedCurrency = selectedProject?.currency || 'USD';
 
   const chartData = useMemo(
     () =>
@@ -118,20 +120,20 @@ export const SCurvePage: React.FC = () => {
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="p-4 bg-white dark:bg-[#0c0c0e] border border-zinc-200 dark:border-zinc-800 rounded-xl">
           <span className="text-[10px] uppercase font-bold text-zinc-500">Planned Value (PV)</span>
-          <p className="text-xl font-bold mt-1">{evm ? `$${evm.pv.toLocaleString()}` : '-'}</p>
+          <p className="text-xl font-bold mt-1">{evm ? `${selectedCurrency} ${evm.pv.toLocaleString()}` : '-'}</p>
         </div>
         <div className="p-4 bg-white dark:bg-[#0c0c0e] border border-zinc-200 dark:border-zinc-800 rounded-xl">
           <span className="text-[10px] uppercase font-bold text-zinc-500">Earned Value (EV)</span>
-          <p className="text-xl font-bold mt-1">{evm ? `$${evm.ev.toLocaleString()}` : '-'}</p>
+          <p className="text-xl font-bold mt-1">{evm ? `${selectedCurrency} ${evm.ev.toLocaleString()}` : '-'}</p>
         </div>
         <div className="p-4 bg-white dark:bg-[#0c0c0e] border border-zinc-200 dark:border-zinc-800 rounded-xl">
           <span className="text-[10px] uppercase font-bold text-zinc-500">Actual Cost (AC)</span>
-          <p className="text-xl font-bold mt-1">{evm ? `$${evm.ac.toLocaleString()}` : '-'}</p>
+          <p className="text-xl font-bold mt-1">{evm ? `${selectedCurrency} ${evm.ac.toLocaleString()}` : '-'}</p>
         </div>
         <div className="p-4 bg-white dark:bg-[#0c0c0e] border border-zinc-200 dark:border-zinc-800 rounded-xl">
           <span className="text-[10px] uppercase font-bold text-zinc-500">Cost Variance (CV)</span>
           <p className={`text-xl font-bold mt-1 ${(evm?.cv || 0) >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-            {evm ? `${evm.cv >= 0 ? '+' : ''}$${Math.abs(evm.cv).toLocaleString()}` : '-'}
+            {evm ? `${evm.cv >= 0 ? '+' : ''}${selectedCurrency} ${Math.abs(evm.cv).toLocaleString()}` : '-'}
           </p>
         </div>
       </div>

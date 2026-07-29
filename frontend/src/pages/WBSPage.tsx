@@ -11,9 +11,9 @@ const isUuid = (value: string): boolean =>
 
 export const WBSPage: React.FC = () => {
   const [nodes, setNodes] = useState<WBSNode[]>(initialData);
-  const [projects, setProjects] = useState<{ id: string; name: string; startDate?: Date; endDate?: Date; progressPercent?: number }[]>([]);
+  const [projects, setProjects] = useState<{ id: string; name: string; startDate?: Date; endDate?: Date; progressPercent?: number; budget?: number; currency?: string }[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
-  const [selectedProject, setSelectedProject] = useState<{ id: string; name: string; startDate?: Date; endDate?: Date; progressPercent?: number } | null>(null);
+  const [selectedProject, setSelectedProject] = useState<{ id: string; name: string; startDate?: Date; endDate?: Date; progressPercent?: number; budget?: number; currency?: string } | null>(null);
   const [expandedNodes, setExpandedNodes] = useState<Record<string, boolean>>({
     'n1': true,
     'n2': true,
@@ -102,7 +102,7 @@ export const WBSPage: React.FC = () => {
   useEffect(() => {
     const loadProjects = async () => {
       try {
-        const data = await request<{ id: string; name: string; startDate?: Date; endDate?: Date; progressPercent?: number }[]>('/projects');
+        const data = await request<{ id: string; name: string; startDate?: Date; endDate?: Date; progressPercent?: number; budget?: number; currency?: string }[]>('/projects');
         setProjects(data);
         if (data.length) {
           setSelectedProjectId(data[0].id);
@@ -1139,6 +1139,7 @@ export const WBSPage: React.FC = () => {
 
   // Get all tasks for dependency selector
   const allTasks = nodes.flatMap(n => n.tasks);
+  const projectCurrency = selectedProject?.currency || 'USD';
 
   return (
     <div className="space-y-4 flex flex-col h-[calc(100vh-100px)]">
@@ -1351,7 +1352,7 @@ export const WBSPage: React.FC = () => {
             {!newTask.isMilestone && (<div><label className="block text-xs font-medium text-zinc-400 mb-1">End Date</label><input required value={newTask.end} onChange={e => setNewTask({...newTask, end: e.target.value})} type="date" className="w-full bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-500" /></div>)}
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <div><label className="block text-xs font-medium text-zinc-400 mb-1">Planned Cost ($)</label><input required value={newTask.cost || ''} onChange={e => setNewTask({...newTask, cost: Number(e.target.value)})} type="number" className="w-full bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-500" /></div>
+            <div><label className="block text-xs font-medium text-zinc-400 mb-1">Planned Cost ({projectCurrency})</label><input required value={newTask.cost || ''} onChange={e => setNewTask({...newTask, cost: Number(e.target.value)})} type="number" className="w-full bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-500" /></div>
             <div><label className="block text-xs font-medium text-zinc-400 mb-1">Status</label><select required value={newTask.status} onChange={e => setNewTask({...newTask, status: e.target.value as Task['status']})} className="w-full bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-500"><option value="not_started">Not Started</option><option value="in_progress">In Progress</option><option value="completed">Completed</option><option value="delayed">Delayed</option></select></div>
           </div>
           <div><label className="block text-xs font-medium text-zinc-400 mb-1">Assigned Resources</label><input value={newTask.resources} onChange={e => setNewTask({...newTask, resources: e.target.value})} placeholder="comma separated" type="text" className="w-full bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-500" /></div>
@@ -1387,7 +1388,7 @@ export const WBSPage: React.FC = () => {
             )}
 
             <div className="grid grid-cols-2 gap-3">
-              <div><label className="block text-xs font-medium text-zinc-400 mb-1">Planned Cost ($)</label><input required value={editTaskForm.cost || ''} onChange={e => setEditTaskForm({...editTaskForm, cost: Number(e.target.value)})} type="number" className="w-full bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-500" /></div>
+              <div><label className="block text-xs font-medium text-zinc-400 mb-1">Planned Cost ({projectCurrency})</label><input required value={editTaskForm.cost || ''} onChange={e => setEditTaskForm({...editTaskForm, cost: Number(e.target.value)})} type="number" className="w-full bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-500" /></div>
               <div><label className="block text-xs font-medium text-zinc-400 mb-1">Status</label><select required value={editTaskForm.status} onChange={e => setEditTaskForm({...editTaskForm, status: e.target.value as Task['status']})} className="w-full bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-500"><option value="not_started">Not Started</option><option value="in_progress">In Progress</option><option value="completed">Completed</option><option value="delayed">Delayed</option></select></div>
             </div>
             

@@ -3,6 +3,26 @@ import { Project, ProjectMember, WBSNode, Task } from '../domain/project.entity'
 import { pool } from '../config/database';
 
 export class ProjectRepository implements IProjectRepository {
+  private async ensureTenantProjectBaselines(tenantId: string): Promise<void> {
+    await pool.query(
+      `INSERT INTO schedules (tenant_id, project_id, name, version, is_active)
+       SELECT p.tenant_id, p.id, 'Baseline Schedule', 1, TRUE
+       FROM projects p
+       LEFT JOIN schedules s ON s.project_id = p.id AND s.tenant_id = p.tenant_id
+       WHERE p.tenant_id = $1 AND s.id IS NULL`,
+      [tenantId]
+    );
+
+    await pool.query(
+      `INSERT INTO wbs (tenant_id, project_id, parent_id, code, name, description, weight)
+       SELECT p.tenant_id, p.id, NULL, '1.0', 'Baseline Work Breakdown', 'Root baseline node for project setup', 100.00
+       FROM projects p
+       LEFT JOIN wbs w ON w.project_id = p.id AND w.tenant_id = p.tenant_id AND w.code = '1.0'
+       WHERE p.tenant_id = $1 AND w.id IS NULL`,
+      [tenantId]
+    );
+  }
+
   private async ensureProjectBaseline(tenantId: string, projectId: string): Promise<void> {
     await this.ensureDefaultScheduleId(tenantId, projectId);
     await pool.query(
@@ -136,10 +156,14 @@ export class ProjectRepository implements IProjectRepository {
   }
 
   async findById(tenantId: string, id: string): Promise<Project | null> {
+    await this.ensureProjectBaseline(tenantId, id);
     const query = `
       SELECT id, tenant_id AS "tenantId", name, code, description, status_id AS "statusId",
              start_date AS "startDate", end_date AS "endDate", budget, currency, location,
-             0.00::numeric AS "progressPercent", created_at AS "createdAt", updated_at AS "updatedAt"
+             0.00::numeric AS "progressPercent",
+             EXISTS (SELECT 1 FROM schedules s WHERE s.project_id = projects.id AND s.tenant_id = projects.tenant_id) AS "hasBaselineSchedule",
+             EXISTS (SELECT 1 FROM wbs w WHERE w.project_id = projects.id AND w.tenant_id = projects.tenant_id AND w.code = '1.0') AS "hasBaselineWbs",
+             created_at AS "createdAt", updated_at AS "updatedAt"
       FROM projects
       WHERE tenant_id = $1 AND id = $2
     `;
@@ -160,10 +184,14 @@ export class ProjectRepository implements IProjectRepository {
   }
 
   async findAll(tenantId: string): Promise<Project[]> {
+    await this.ensureTenantProjectBaselines(tenantId);
     const query = `
       SELECT id, tenant_id AS "tenantId", name, code, description, status_id AS "statusId",
              start_date AS "startDate", end_date AS "endDate", budget, currency, location,
-             0.00::numeric AS "progressPercent", created_at AS "createdAt", updated_at AS "updatedAt"
+             0.00::numeric AS "progressPercent",
+             EXISTS (SELECT 1 FROM schedules s WHERE s.project_id = projects.id AND s.tenant_id = projects.tenant_id) AS "hasBaselineSchedule",
+             EXISTS (SELECT 1 FROM wbs w WHERE w.project_id = projects.id AND w.tenant_id = projects.tenant_id AND w.code = '1.0') AS "hasBaselineWbs",
+             created_at AS "createdAt", updated_at AS "updatedAt"
       FROM projects
       WHERE tenant_id = $1
       ORDER BY created_at DESC

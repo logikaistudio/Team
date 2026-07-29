@@ -7,5 +7,6 @@ export interface ProjectDocument {
   size: number;
   filePath: string;
   uploadedBy: string;
+  fileData?: Buffer;
   createdAt: Date;
 }

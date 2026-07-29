@@ -102,6 +102,7 @@ export const DashboardPage: React.FC = () => {
   }, [selectedProjectId]);
 
   const selectedProject = projects.find((p) => p.id === selectedProjectId) || null;
+  const selectedCurrency = selectedProject?.currency || 'USD';
   const totalBudget = useMemo(
     () => projects.reduce((sum, p) => sum + Number(p.budget || 0), 0),
     [projects]
@@ -168,7 +169,7 @@ export const DashboardPage: React.FC = () => {
         <div className="bg-white dark:bg-[#0c0c0e] border border-zinc-200 dark:border-zinc-800 p-6 rounded-xl flex items-center justify-between">
           <div>
             <span className="text-xs font-medium text-zinc-500 uppercase">Portfolio Budget</span>
-            <h3 className="text-2xl font-bold mt-1">${totalBudget.toLocaleString()}</h3>
+            <h3 className="text-2xl font-bold mt-1">{selectedCurrency} {totalBudget.toLocaleString()}</h3>
             <span className="text-[10px] text-zinc-400 font-semibold">{projects.length} projects</span>
           </div>
           <div className="p-3 bg-brand-500/10 text-brand-500 rounded-lg">
@@ -280,7 +281,7 @@ export const DashboardPage: React.FC = () => {
                 <th className="p-4 font-semibold">Project Code</th>
                 <th className="p-4 font-semibold">Project Name</th>
                 <th className="p-4 font-semibold">Location</th>
-                <th className="p-4 font-semibold">Budget (USD)</th>
+                <th className="p-4 font-semibold">Budget</th>
                 <th className="p-4 font-semibold">Progress</th>
                 <th className="p-4 font-semibold">Health status</th>
               </tr>
