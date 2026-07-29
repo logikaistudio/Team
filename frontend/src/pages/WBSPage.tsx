@@ -58,11 +58,11 @@ export const WBSPage: React.FC = () => {
   const [newNode, setNewNode] = useState({ code: '', name: '', weight: 0 });
   
   const [newTask, setNewTask] = useState({ 
-    nodeId: '', name: '', start: '', end: '', cost: 0, status: 'not_started' as Task['status'], resources: '', isMilestone: false, depTaskId: '', depType: 'FS' as Dependency['type']
+     nodeId: '', name: '', start: '', end: '', cost: 0, weight: 0, status: 'not_started' as Task['status'], resources: '', isMilestone: false, depTaskId: '', depType: 'FS' as Dependency['type']
   });
 
   const [editTaskForm, setEditTaskForm] = useState<{
-     name: string; start: string; end: string; cost: number; progress: number; status: Task['status']; resources: string; dependencies: Dependency[];
+      name: string; start: string; end: string; cost: number; weight: number; progress: number; status: Task['status']; resources: string; dependencies: Dependency[];
   } | null>(null);
 
   const normalizeTask = (task: any): Task => {
@@ -107,6 +107,7 @@ export const WBSPage: React.FC = () => {
         start: toDateInputValue(editingTask.start),
         end: toDateInputValue(editingTask.end || editingTask.start),
         cost: editingTask.cost,
+        weight: Number((editingTask as any).weight ?? 0),
         progress: editingTask.progress,
         status: editingTask.status,
         resources: editingTask.resources ? editingTask.resources.join(', ') : '',
@@ -269,6 +270,30 @@ export const WBSPage: React.FC = () => {
     });
   };
 
+  const getLiveTaskProgress = (task: Task) => {
+    return editingTask?.id === task.id && editTaskForm
+      ? Number(editTaskForm.progress)
+      : Number(task.progress);
+  };
+
+  const getNodeProgressPercent = (nodeTasks: Task[]) => {
+    const allTasks = getAllTasksFlat(nodeTasks);
+    const leafTasks = allTasks.filter((t) => !t.subtasks || t.subtasks.length === 0);
+    if (leafTasks.length === 0) return 0;
+
+    const totalWeight = leafTasks.reduce((sum, t) => sum + Number((t as any).weight ?? 0), 0);
+    if (totalWeight > 0) {
+      const weighted = leafTasks.reduce((sum, t) => {
+        const progress = Math.max(0, Math.min(100, getLiveTaskProgress(t)));
+        return sum + (Number((t as any).weight ?? 0) * progress) / 100;
+      }, 0);
+      return Number(((weighted / totalWeight) * 100).toFixed(2));
+    }
+
+    const avg = leafTasks.reduce((sum, t) => sum + Math.max(0, Math.min(100, getLiveTaskProgress(t))), 0) / leafTasks.length;
+    return Number(avg.toFixed(2));
+  };
+
   const exportToExcel = () => {
     try {
       const allTasks = nodes.flatMap(n => n.tasks);
@@ -344,16 +369,23 @@ export const WBSPage: React.FC = () => {
       };
 
       if (!hasTasks) {
-        maxDate.setDate(maxDate.getDate() + 30);
-      } else {
-        // Buffer of 7 days before start and 14 days after end to keep calendar view clean
-        const tempMin = new Date(minDate);
-        tempMin.setDate(tempMin.getDate() - 7);
-        minDate = tempMin;
+        if (selectedProject?.startDate) {
+          minDate = new Date(selectedProject.startDate);
+        }
+        if (selectedProject?.endDate) {
+          maxDate = new Date(selectedProject.endDate);
+        } else {
+          maxDate.setDate(maxDate.getDate() + 30);
+        }
+      }
 
-        const tempMax = new Date(maxDate);
-        tempMax.setDate(tempMax.getDate() + 14);
-        maxDate = tempMax;
+      if (selectedProject?.startDate) {
+        const projectStart = new Date(selectedProject.startDate);
+        if (projectStart < minDate) minDate = projectStart;
+      }
+      if (selectedProject?.endDate) {
+        const projectEnd = new Date(selectedProject.endDate);
+        if (projectEnd > maxDate) maxDate = projectEnd;
       }
 
       // Align to week boundaries
@@ -363,11 +395,9 @@ export const WBSPage: React.FC = () => {
       const MS_PER_DAY = 1000 * 60 * 60 * 24;
       const totalDays = Math.ceil((alignedEnd.getTime() - alignedStart.getTime()) / MS_PER_DAY) + 1;
 
-      // Print page constraints: landscape A4 width is about 1050px.
-      // Left columns: Task Item (~250px), Start (~75px), Finish (~75px), Duration (~60px), Weight (~50px) = 510px.
-      // Remaining print space for Gantt calendar: ~540px.
-      // Scale dayWidth to fit the timeline.
-      const dayWidth = Math.max(6, Math.min(20, Math.floor(540 / totalDays)));
+      // Print page constraints: use narrower left columns and wider timeline area.
+      const PRINT_CALENDAR_WIDTH = 700;
+      const dayWidth = Math.max(3, Math.min(16, Math.floor(PRINT_CALENDAR_WIDTH / Math.max(1, totalDays))));
       const chartWidth = totalDays * dayWidth;
 
       const days = Array.from({ length: totalDays }, (_, i) => {
@@ -459,7 +489,8 @@ export const WBSPage: React.FC = () => {
           let displayStart = task.start;
           let displayEnd = task.end;
           let displayDuration = calculateTaskDuration(task.start, task.end);
-          let displayWeight = (typeof (task as any).weight === 'number') ? (task as any).weight : '-';
+          const hasWeight = typeof (task as any).weight === 'number' && !Number.isNaN(Number((task as any).weight));
+          let displayWeight = hasWeight ? `${Number((task as any).weight).toFixed(2)}%` : '-';
 
           if (isParent) {
             const childDates = getChildTasksDateRange(task);
@@ -554,6 +585,7 @@ export const WBSPage: React.FC = () => {
 
         for (const node of nodes) {
           const nodeDateRange = getNodeDateRange(node.tasks);
+          const nodeProgressPercent = getNodeProgressPercent(node.tasks);
           
           // Compute node bar bounds from its task date range
           let nodeBarLeft = 0;
@@ -593,7 +625,7 @@ export const WBSPage: React.FC = () => {
                    <!-- Colored summary bar (full node planned duration) -->
                    <div style="position: absolute; top: 50%; left: ${nodeBarLeft}px; transform: translateY(-50%); width: ${nodeBarWidth}px; height: 12px; background: #374151; border-radius: 2px; border: 1px solid rgba(0,0,0,0.2); box-sizing: border-box; z-index: 2;"></div>
                    <!-- Semi-transparent overlay on the right to show remaining work -->
-                   <div style="position: absolute; top: 50%; left: ${nodeBarLeft + Math.round(nodeBarWidth * Math.min(100, Math.max(0, Number((node as any).progressPercent) || 0)) / 100)}px; transform: translateY(-50%); width: ${nodeBarWidth - Math.round(nodeBarWidth * Math.min(100, Math.max(0, Number((node as any).progressPercent) || 0)) / 100)}px; height: 12px; background: rgba(255,255,255,0.55); border-radius: 0 2px 2px 0; box-sizing: border-box; z-index: 3;"></div>
+                   <div style="position: absolute; top: 50%; left: ${nodeBarLeft + Math.round(nodeBarWidth * Math.min(100, Math.max(0, Number(nodeProgressPercent) || 0)) / 100)}px; transform: translateY(-50%); width: ${nodeBarWidth - Math.round(nodeBarWidth * Math.min(100, Math.max(0, Number(nodeProgressPercent) || 0)) / 100)}px; height: 12px; background: rgba(255,255,255,0.55); border-radius: 0 2px 2px 0; box-sizing: border-box; z-index: 3;"></div>
                  ` : ''}
               </td>
             </tr>
@@ -633,6 +665,7 @@ export const WBSPage: React.FC = () => {
               table.print-table {
                 width: 100%;
                 border-collapse: collapse;
+                table-layout: fixed;
                 font-size: 10px;
                 page-break-inside: auto;
               }
@@ -703,11 +736,11 @@ export const WBSPage: React.FC = () => {
               <table class="print-table">
                 <thead>
                   <tr>
-                    <th rowspan="3" style="width: 328px; min-width: 328px; max-width: 328px; border: 1px solid #111;">Task Item</th>
-                    <th rowspan="3" style="width: 52px; min-width: 52px; max-width: 52px; border: 1px solid #111; text-align: center;">Start</th>
-                    <th rowspan="3" style="width: 52px; min-width: 52px; max-width: 52px; border: 1px solid #111; text-align: center;">Finish</th>
+                    <th rowspan="3" style="width: 197px; min-width: 197px; max-width: 197px; border: 1px solid #111;">Task Item</th>
+                    <th rowspan="3" style="width: 42px; min-width: 42px; max-width: 42px; border: 1px solid #111; text-align: center;">Start</th>
+                    <th rowspan="3" style="width: 42px; min-width: 42px; max-width: 42px; border: 1px solid #111; text-align: center;">Finish</th>
                     <th rowspan="3" style="width: 38px; min-width: 38px; max-width: 38px; border: 1px solid #111; text-align: center;">Duration</th>
-                    <th rowspan="3" style="width: 35px; min-width: 35px; max-width: 35px; border: 1px solid #111; text-align: center;">Weight</th>
+                    <th rowspan="3" style="width: 28px; min-width: 28px; max-width: 28px; border: 1px solid #111; text-align: center;">Weight</th>
                     <th style="padding: 0; border: 1px solid #111; height: 24px; border-bottom: 1px solid #111;">
                       <div style="display: flex; width: ${chartWidth}px;">
                         ${monthSegments.map(s => `<div style="width: ${s.span * dayWidth}px; text-align: center; border-right: 1px solid #111; box-sizing: border-box; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; padding: 4px 0; font-size: 10px; font-weight: bold;">${s.label}</div>`).join('')}
@@ -941,7 +974,7 @@ export const WBSPage: React.FC = () => {
         plannedStart: newTask.start,
         plannedEnd: newTask.isMilestone ? newTask.start : newTask.end,
         plannedCost: Number(newTask.cost) || 0,
-        weight: 0,
+        weight: Number(newTask.weight) || 0,
         dependencies: deps.length > 0 ? deps : undefined,
         status: newTask.status,
       };
@@ -958,7 +991,7 @@ export const WBSPage: React.FC = () => {
           : n
       ));
       setTaskModalOpen(false);
-      setNewTask({ nodeId: '', name: '', start: '', end: '', cost: 0, status: 'not_started', resources: '', isMilestone: false, depTaskId: '', depType: 'FS' });
+      setNewTask({ nodeId: '', name: '', start: '', end: '', cost: 0, weight: 0, status: 'not_started', resources: '', isMilestone: false, depTaskId: '', depType: 'FS' });
     } catch (err) {
       console.error('Create task failed', err);
       alert('Failed to create task');
@@ -974,6 +1007,7 @@ export const WBSPage: React.FC = () => {
         plannedStart: editTaskForm.start,
         plannedEnd: editingTask.isMilestone ? editTaskForm.start : editTaskForm.end,
         plannedCost: Number(editTaskForm.cost),
+        weight: Number(editTaskForm.weight),
         progressPercent: Number(editTaskForm.progress),
         status: editTaskForm.status,
         resources: editTaskForm.resources.split(',').map(r => r.trim()).filter(r => r),
@@ -988,6 +1022,7 @@ export const WBSPage: React.FC = () => {
           plannedStart: payload.plannedStart,
           plannedEnd: payload.plannedEnd,
           plannedCost: payload.plannedCost,
+          weight: payload.weight,
           progressPercent: payload.progressPercent,
           dependencies: payload.dependencies,
         });
@@ -1151,7 +1186,7 @@ export const WBSPage: React.FC = () => {
     let displayStart = task.start;
     let displayEnd = task.end;
     let taskDuration = calculateTaskDuration(task.start, task.end);
-    const liveProgress = editingTask?.id === task.id && editTaskForm ? editTaskForm.progress : task.progress;
+    const liveProgress = getLiveTaskProgress(task);
     const taskWeight = Number((task as any).weight ?? 0);
     const weightedEarned = (taskWeight * Math.max(0, Math.min(100, Number(liveProgress) || 0))) / 100;
     
@@ -1405,7 +1440,7 @@ export const WBSPage: React.FC = () => {
         <div 
           ref={leftPaneRef}
           onScroll={handleLeftScroll}
-          className="w-[45%] flex flex-col overflow-y-auto no-scrollbar border-r border-zinc-200 dark:border-zinc-800 z-30 bg-white dark:bg-[#0c0c0e]"
+          className="w-[31.5%] flex flex-col overflow-y-auto no-scrollbar border-r border-zinc-200 dark:border-zinc-800 z-30 bg-white dark:bg-[#0c0c0e]"
         >
           {/* Header Row */}
           <div className="sticky top-0 z-20 h-[57px] bg-white dark:bg-[#0c0c0e] border-b border-zinc-200 dark:border-zinc-800 flex items-center px-4 gap-4">
@@ -1430,6 +1465,7 @@ export const WBSPage: React.FC = () => {
             {nodes.map((node) => {
               const isExpanded = expandedNodes[node.id];
               const nodeDateRange = getNodeDateRange(node.tasks);
+              const nodeProgressPercent = getNodeProgressPercent(node.tasks);
               return (
                 <div key={node.id} className="flex flex-col">
                   {/* Node Row */}
@@ -1453,7 +1489,7 @@ export const WBSPage: React.FC = () => {
                     </div>
                     <div className="w-[35px] text-center">
                       <div className="text-[10px] font-semibold text-zinc-500">{node.weight}%</div>
-                      <div className="text-[9px] font-bold text-emerald-500">{(node as any).progressPercent ?? 0}%▶</div>
+                      <div className="text-[9px] font-bold text-emerald-500">{nodeProgressPercent.toFixed(2)}%▶</div>
                     </div>
                   </div>
 
@@ -1466,15 +1502,17 @@ export const WBSPage: React.FC = () => {
         </div>
 
         {/* Right Pane: Gantt Chart */}
-        <GanttChart 
-          nodes={nodes} 
-          expandedNodes={expandedNodes} 
-          expandedTasks={expandedTasks} 
-          onTaskClick={openTaskDetails} 
-          onTaskDateChange={handleTaskDateChangeFromCalendar}
-          scrollRef={rightPaneRef}
-          onScroll={handleRightScroll}
-        />
+        <div className="w-[68.5%] min-w-0">
+          <GanttChart 
+            nodes={nodes} 
+            expandedNodes={expandedNodes} 
+            expandedTasks={expandedTasks} 
+            onTaskClick={openTaskDetails} 
+            onTaskDateChange={handleTaskDateChangeFromCalendar}
+            scrollRef={rightPaneRef}
+            onScroll={handleRightScroll}
+          />
+        </div>
       </div>
 
       {/* Add Node Modal */}
@@ -1503,6 +1541,7 @@ export const WBSPage: React.FC = () => {
             <div><label className="block text-xs font-medium text-zinc-400 mb-1">Planned Cost ({projectCurrency})</label><input required value={newTask.cost || ''} onChange={e => setNewTask({...newTask, cost: Number(e.target.value)})} type="number" className="w-full bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-500" /></div>
             <div><label className="block text-xs font-medium text-zinc-400 mb-1">Status</label><select required value={newTask.status} onChange={e => setNewTask({...newTask, status: e.target.value as Task['status']})} className="w-full bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-500"><option value="not_started">Not Started</option><option value="in_progress">In Progress</option><option value="completed">Completed</option><option value="delayed">Delayed</option></select></div>
           </div>
+          <div><label className="block text-xs font-medium text-zinc-400 mb-1">Weight (%)</label><input required value={newTask.weight || ''} onChange={e => setNewTask({...newTask, weight: Number(e.target.value)})} type="number" step="0.01" min="0" max="100" className="w-full bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-500" /></div>
           <div><label className="block text-xs font-medium text-zinc-400 mb-1">Assigned Resources</label><input value={newTask.resources} onChange={e => setNewTask({...newTask, resources: e.target.value})} placeholder="comma separated" type="text" className="w-full bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-500" /></div>
           <div className="border-t border-zinc-200 dark:border-zinc-800 pt-4 mt-2">
             <h4 className="text-sm font-semibold mb-2">Dependencies</h4>
@@ -1539,6 +1578,7 @@ export const WBSPage: React.FC = () => {
               <div><label className="block text-xs font-medium text-zinc-400 mb-1">Planned Cost ({projectCurrency})</label><input required value={editTaskForm.cost || ''} onChange={e => setEditTaskForm({...editTaskForm, cost: Number(e.target.value)})} type="number" className="w-full bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-500" /></div>
               <div><label className="block text-xs font-medium text-zinc-400 mb-1">Status</label><select required value={editTaskForm.status} onChange={e => setEditTaskForm({...editTaskForm, status: e.target.value as Task['status']})} className="w-full bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-500"><option value="not_started">Not Started</option><option value="in_progress">In Progress</option><option value="completed">Completed</option><option value="delayed">Delayed</option></select></div>
             </div>
+            <div><label className="block text-xs font-medium text-zinc-400 mb-1">Weight (%)</label><input required value={editTaskForm.weight || ''} onChange={e => setEditTaskForm({...editTaskForm, weight: Number(e.target.value)})} type="number" step="0.01" min="0" max="100" className="w-full bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-500" /></div>
             
             <div><label className="block text-xs font-medium text-zinc-400 mb-1">Assigned Resources</label><input value={editTaskForm.resources} onChange={e => setEditTaskForm({...editTaskForm, resources: e.target.value})} placeholder="comma separated" type="text" className="w-full bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-500" /></div>
             
