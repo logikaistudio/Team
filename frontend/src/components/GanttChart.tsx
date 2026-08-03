@@ -70,6 +70,31 @@ const addDays = (isoDate: string, days: number): string => {
   return date.toISOString().split('T')[0];
 };
 
+const normalizeDependencyType = (value: unknown): Dependency['type'] => {
+  const raw = String(value || '').trim().toUpperCase();
+  if (raw === 'FS' || raw === 'FF' || raw === 'SS' || raw === 'SF') return raw;
+  if (raw === 'FINISH_TO_START') return 'FS';
+  if (raw === 'FINISH_TO_FINISH') return 'FF';
+  if (raw === 'START_TO_START') return 'SS';
+  if (raw === 'START_TO_FINISH') return 'SF';
+  return 'FS';
+};
+
+const normalizeDependencies = (dependencies: unknown): Dependency[] => {
+  if (!Array.isArray(dependencies)) return [];
+
+  return dependencies
+    .map((dep: any) => {
+      const taskId = dep?.taskId || dep?.predecessorId || dep?.predecessor_id;
+      if (!taskId || typeof taskId !== 'string') return null;
+      return {
+        taskId,
+        type: normalizeDependencyType(dep?.type || dep?.dependencyType || dep?.dependency_type),
+      } as Dependency;
+    })
+    .filter((dep): dep is Dependency => !!dep);
+};
+
 export const GanttChart: React.FC<GanttChartProps> = ({ nodes, expandedNodes, expandedTasks, onTaskClick, onTaskDateChange, scrollRef, onScroll }) => {
   const [draggingTaskId, setDraggingTaskId] = useState<string | null>(null);
   const [previewDates, setPreviewDates] = useState<Record<string, { start: string; end: string }>>({});
@@ -304,10 +329,12 @@ export const GanttChart: React.FC<GanttChartProps> = ({ nodes, expandedNodes, ex
     const lines: JSX.Element[] = [];
     
     const processTaskDependencies = (task: Task) => {
-      if (task.dependencies) {
+      const normalizedDeps = normalizeDependencies(task.dependencies);
+      if (normalizedDeps.length > 0) {
         const targetPos = taskPositions[task.id];
         if (targetPos) {
-          task.dependencies.forEach(dep => {
+          normalizedDeps.forEach(dep => {
+            if (dep.taskId === task.id) return;
             const sourcePos = taskPositions[dep.taskId];
             if (!sourcePos) return;
 

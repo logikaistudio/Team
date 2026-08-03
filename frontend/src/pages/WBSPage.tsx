@@ -22,6 +22,31 @@ const toDateInputValue = (value: unknown): string => {
   return '';
 };
 
+const normalizeDependencyType = (value: unknown): Dependency['type'] => {
+  const raw = String(value || '').trim().toUpperCase();
+  if (raw === 'FS' || raw === 'FF' || raw === 'SS' || raw === 'SF') return raw;
+  if (raw === 'FINISH_TO_START') return 'FS';
+  if (raw === 'FINISH_TO_FINISH') return 'FF';
+  if (raw === 'START_TO_START') return 'SS';
+  if (raw === 'START_TO_FINISH') return 'SF';
+  return 'FS';
+};
+
+const normalizeDependencies = (dependencies: unknown): Dependency[] => {
+  if (!Array.isArray(dependencies)) return [];
+
+  return dependencies
+    .map((dep: any) => {
+      const taskId = dep?.taskId || dep?.predecessorId || dep?.predecessor_id;
+      if (!taskId || typeof taskId !== 'string') return null;
+      return {
+        taskId,
+        type: normalizeDependencyType(dep?.type || dep?.dependencyType || dep?.dependency_type),
+      } as Dependency;
+    })
+    .filter((dep): dep is Dependency => !!dep);
+};
+
 export const WBSPage: React.FC = () => {
   const [nodes, setNodes] = useState<WBSNode[]>(initialData);
   const [projects, setProjects] = useState<{ id: string; name: string; startDate?: Date; endDate?: Date; progressPercent?: number; budget?: number; currency?: string }[]>([]);
@@ -83,7 +108,7 @@ export const WBSPage: React.FC = () => {
       status: task.status,
       resources: task.resources,
       isMilestone: task.isMilestone,
-      dependencies: task.dependencies,
+      dependencies: normalizeDependencies(task.dependencies),
       subtasks: task.subtasks,
       parentId: task.parentId,
     };
