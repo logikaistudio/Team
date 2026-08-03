@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, FolderPlus, Play, CheckCircle2, AlertCircle, ChevronDown, ChevronRight, Diamond, Settings, Calendar, Trash2 } from 'lucide-react';
+import { Plus, FolderPlus, ChevronDown, ChevronRight, Settings, Calendar, Trash2 } from 'lucide-react';
 import { Modal } from '../components/Modal';
 import { GanttChart, WBSNode, Task, Dependency } from '../components/GanttChart';
 import clsx from 'clsx';
@@ -33,18 +33,31 @@ const normalizeDependencyType = (value: unknown): Dependency['type'] => {
 };
 
 const normalizeDependencies = (dependencies: unknown): Dependency[] => {
-  if (!Array.isArray(dependencies)) return [];
+  let rawDependencies: unknown = dependencies;
+  if (typeof rawDependencies === 'string') {
+    try {
+      rawDependencies = JSON.parse(rawDependencies);
+    } catch {
+      return [];
+    }
+  }
 
-  return dependencies
+  const depList = Array.isArray(rawDependencies)
+    ? rawDependencies
+    : rawDependencies && typeof rawDependencies === 'object'
+      ? [rawDependencies]
+      : [];
+
+  return depList
     .map((dep: any) => {
       const taskId = dep?.taskId || dep?.predecessorId || dep?.predecessor_id;
-      if (!taskId || typeof taskId !== 'string') return null;
+      if (!taskId) return null;
       return {
-        taskId,
+        taskId: String(taskId).trim(),
         type: normalizeDependencyType(dep?.type || dep?.dependencyType || dep?.dependency_type),
       } as Dependency;
     })
-    .filter((dep): dep is Dependency => !!dep);
+    .filter((dep): dep is Dependency => !!dep && dep.taskId.length > 0);
 };
 
 export const WBSPage: React.FC = () => {
@@ -1211,9 +1224,7 @@ export const WBSPage: React.FC = () => {
     let displayStart = task.start;
     let displayEnd = task.end;
     let taskDuration = calculateTaskDuration(task.start, task.end);
-    const liveProgress = getLiveTaskProgress(task);
     const taskWeight = Number((task as any).weight ?? 0);
-    const weightedEarned = (taskWeight * Math.max(0, Math.min(100, Number(liveProgress) || 0))) / 100;
     
     if (hasSubtasks) {
       const childDates = getChildTasksDateRange(task);
@@ -1292,21 +1303,9 @@ export const WBSPage: React.FC = () => {
             {task.isMilestone ? 'MS' : `${taskDuration}d`}
           </div>
           <div className="w-[35px] text-center shrink-0">
-            <div className="flex flex-col items-center justify-center leading-tight">
-              <div className="flex items-center justify-center gap-1">
-                {getStatusIcon(task.status, task.isMilestone)}
-                {!task.isMilestone && (
-                  <span className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 min-w-[20px]">
-                    {liveProgress}%
-                  </span>
-                )}
-              </div>
-              {!task.isMilestone && (
-                <span className="text-[9px] font-bold text-brand-600 dark:text-brand-400">
-                  {weightedEarned.toFixed(2)}
-                </span>
-              )}
-            </div>
+            <span className="text-[10px] font-semibold text-zinc-600 dark:text-zinc-300">
+              {task.isMilestone ? '—' : `${taskWeight.toFixed(2)}%`}
+            </span>
           </div>
         </div>
         
@@ -1314,16 +1313,6 @@ export const WBSPage: React.FC = () => {
         {hasSubtasks && isExpanded && task.subtasks!.map(subtask => renderTaskRow(subtask, depth + 1))}
       </div>
     );
-  };
-
-  const getStatusIcon = (status: string, isMilestone?: boolean) => {
-    if (isMilestone) return <Diamond size={14} className="text-yellow-500 fill-yellow-500" />;
-    switch (status) {
-      case 'completed': return <CheckCircle2 size={14} className="text-green-500" />;
-      case 'in_progress': return <Play size={14} className="text-brand-500" />;
-      case 'delayed': return <AlertCircle size={14} className="text-red-500" />;
-      default: return <span className="w-3.5 h-3.5 rounded-full border border-zinc-500 block" />;
-    }
   };
 
   const calculateTaskDuration = (startDate: string, endDate: string): number => {

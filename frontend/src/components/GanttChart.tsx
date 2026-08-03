@@ -81,18 +81,31 @@ const normalizeDependencyType = (value: unknown): Dependency['type'] => {
 };
 
 const normalizeDependencies = (dependencies: unknown): Dependency[] => {
-  if (!Array.isArray(dependencies)) return [];
+  let rawDependencies: unknown = dependencies;
+  if (typeof rawDependencies === 'string') {
+    try {
+      rawDependencies = JSON.parse(rawDependencies);
+    } catch {
+      return [];
+    }
+  }
 
-  return dependencies
+  const depList = Array.isArray(rawDependencies)
+    ? rawDependencies
+    : rawDependencies && typeof rawDependencies === 'object'
+      ? [rawDependencies]
+      : [];
+
+  return depList
     .map((dep: any) => {
       const taskId = dep?.taskId || dep?.predecessorId || dep?.predecessor_id;
-      if (!taskId || typeof taskId !== 'string') return null;
+      if (!taskId) return null;
       return {
-        taskId,
+        taskId: String(taskId).trim(),
         type: normalizeDependencyType(dep?.type || dep?.dependencyType || dep?.dependency_type),
       } as Dependency;
     })
-    .filter((dep): dep is Dependency => !!dep);
+    .filter((dep): dep is Dependency => !!dep && dep.taskId.length > 0);
 };
 
 export const GanttChart: React.FC<GanttChartProps> = ({ nodes, expandedNodes, expandedTasks, onTaskClick, onTaskDateChange, scrollRef, onScroll }) => {
@@ -367,20 +380,21 @@ export const GanttChart: React.FC<GanttChartProps> = ({ nodes, expandedNodes, ex
                 <path
                   d={pathD}
                   fill="none"
-                  stroke="#2563eb"
-                  strokeWidth="1.8"
-                  strokeOpacity="0.85"
+                  stroke="#38bdf8"
+                  strokeWidth="2.2"
+                  strokeOpacity="0.95"
+                  style={{ filter: 'drop-shadow(0 0 2px rgba(56,189,248,0.55))' }}
                   markerEnd="url(#arrowhead)"
                 />
-                <circle cx={startX} cy={startY} r="2.5" fill="#1d4ed8" fillOpacity="0.9" />
-                <circle cx={endX} cy={endY} r="2.5" fill="#2563eb" fillOpacity="0.95" />
+                <circle cx={startX} cy={startY} r="2.8" fill="#0ea5e9" fillOpacity="0.95" />
+                <circle cx={endX} cy={endY} r="2.8" fill="#38bdf8" fillOpacity="0.98" />
                 <text
                   x={midX}
                   y={midY - 4}
                   textAnchor="middle"
                   fontSize="8"
-                  fill="#1e3a8a"
-                  fillOpacity="0.9"
+                  fill="#bae6fd"
+                  fillOpacity="0.95"
                   style={{ userSelect: 'none' }}
                 >
                   {dep.type}
@@ -570,7 +584,7 @@ export const GanttChart: React.FC<GanttChartProps> = ({ nodes, expandedNodes, ex
         <svg className="absolute inset-0 z-30 pointer-events-none" style={{ width: daysArray.length * dayWidth, height: contentHeight }}>
           <defs>
             <marker id="arrowhead" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
-              <polygon points="0 0, 6 3, 0 6" fill="#2563eb" fillOpacity="0.85" />
+              <polygon points="0 0, 6 3, 0 6" fill="#38bdf8" fillOpacity="0.95" />
             </marker>
           </defs>
           {renderDependencyLines()}
